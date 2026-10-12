@@ -17,6 +17,10 @@ cafesf2 [options] <archive.bfsar> [<archive.bfsar> ...]
   --seed N       initial game PRNG state (default 0x12345678)
   --var N=V      set variable N (0-15 player, 16-31 global) to V before each
                  sequence starts; repeat for more variables
+  --voices N     drop the notes that the game drops for lack of a voice,
+                 with N voices (the game has 96 unless it sets another
+                 count). The result only approximates the game.
+  --voices off   keep every note (default)
   --list         list sequences without converting
   --quiet        print errors only
   --version      show the version
@@ -26,6 +30,11 @@ Some sequences play nothing until the game sets one of their variables. `--var` 
 each sequence starts. As in the game, player and global variables start at -1. Use `--only` to
 choose the sequences that `--var` applies to.
 
+cafesf2 keeps every note. In the game, a note is dropped when every voice is in use. nw::snd has
+96 voices unless a game sets another count in its program. `--voices N` drops the notes that
+cafesf2's model of the game drops with N voices. Which notes the console drops isn't known
+exactly. The result only approximates the game.
+
 Files use the sequence names, with adjustments for Windows: forbidden characters and trailing
 dots or spaces become `_`, and reserved device names such as `CON` get an added `_`. If names
 differ only in ASCII letter case, later sequences get a sound-index suffix to avoid collisions
@@ -33,15 +42,14 @@ on Windows and macOS. The same applies to a sequence named `samples`. That name 
 collide with the SFZ sample folder. The default output folder is `<archive name>_cafesf2`, and
 the same rules apply to its name. Use `--output` to choose another location.
 
-cafesf2 is the Wii U counterpart of citrusf2. citrusf2 converts Nintendo 3DS sound archives.
-Wii U games use a later version of the same sound library, nw::snd. cafesf2 plays sequences as
-citrusf2 does. Both follow the 3SF project's reverse engineering of the 3DS's nw::snd. The
-Wii U's timing, voices and commands come from Animal Crossing: amiibo Festival's executable.
+Wii U games play their sequences with Nintendo's sound library, nw::snd. cafesf2 plays them as
+nw::snd does. The model of the Wii U's timing, voices and commands comes from Animal Crossing:
+amiibo Festival's executable.
 
 ## Downloads
 
-The Releases page has cafesf2 for 64-bit Windows. On macOS and Linux, build it from source
-(see [Building](#building)).
+The Releases page has cafesf2 for 64-bit Windows. On macOS on Apple Silicon, build it from
+source (see [Building](#building)).
 
 ## Drag and drop
 
@@ -80,31 +88,32 @@ controllers. The performer follows the Wii U's nw::snd player, including:
   depend on timing.
 - Main-loop detection and MIDI loop markers. The main loop belongs to the lowest-numbered track
   that can still advance. A pass qualifies only if earlier tracks make no contribution. Tracks
-  waiting forever on held notes do not block this choice. A pass that changes nothing, such as
-  one that only polls or counts a variable, qualifies only while no other track changes the
-  sound or plays on. Setting a variable that another track reads counts as a change. A track
-  that has sounded nothing and changed nothing for 10 seconds doesn't count as playing on. A
-  sequence whose tracks all reach their end has no main loop. Backward jumps to unvisited
-  commands and passes without waits, such as random retries or variable polling, are not loops.
-  Inside a subroutine, a jump back isn't a loop when its pass played no note that can be heard
-  and ran a conditional jump, call, return or end that could leave the loop. A tie or mono
-  legato on a note below hearing (see below) plays nothing that can be heard. A held note that
-  sounds until the game stops it keeps such a loop. A main loop in which no note starts isn't a
-  loop either once every earlier note has ended or is fading out. The sequence then ends with
-  its last sound. The markers go on the first pass that a player looping on them repeats as the
-  game plays the next one: the same notes at the same times, with the same settings and tempo.
-  The first pass often differs. Setup before the loop can land in its first tick. The game can
-  keep a value from pass to pass. Later passes may only tie again a note that the first pass
-  strikes. If no pass so far repeats that way but the next pass does, the performance plays that
-  pass too. Otherwise the markers stay on the first pass. They also stay there in a loop that
-  draws random numbers. At the loop's start, the MIDI file sends each controller, pitch, preset
-  and tempo that the game gives back there when the loop ends with another value. Without those
-  events, a player that loops on the markers would keep the value from the loop's end.
+  that wait forever, on held notes or for a negative number of ticks, do not block this choice.
+  A pass that changes nothing, such as one that only polls or counts a variable, qualifies only
+  while no other track changes the sound or plays on. Setting a variable that another track
+  reads counts as a change. A track that has sounded nothing and changed nothing for 10 seconds
+  doesn't count as playing on. A sequence whose tracks all reach their end has no main loop.
+  Backward jumps to unvisited commands and passes without waits, such as random retries or
+  variable polling, are not loops. Inside a subroutine, a jump back isn't a loop when its pass
+  played no note that can be heard and ran a conditional jump, call, return or end that could
+  leave the loop. A tie or mono legato on a note below hearing (see below) plays nothing that
+  can be heard. A held note that sounds until the game stops it keeps such a loop. A main loop
+  in which no note starts isn't a loop either once every earlier note has ended or is fading
+  out. The sequence then ends with its last sound. The markers go on the first pass that a
+  player looping on them repeats as the game plays the next one: the same notes at the same
+  times, with the same settings and tempo. The first pass often differs. Setup before the loop
+  can land in its first tick. The game can keep a value from pass to pass. Later passes may only
+  tie again a note that the first pass strikes. If no pass so far repeats that way but the next
+  pass does, the performance plays that pass too. Otherwise the markers stay on the first pass.
+  They also stay there in a loop that draws random numbers. At the loop's start, the MIDI file
+  sends each controller, pitch, preset and tempo that the game gives back there when the loop
+  ends with another value. Without those events, a player that loops on the markers would keep
+  the value from the loop's end.
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
-Indefinitely held sounds are capped at 10 seconds after their last change. As in the WSF
-project, a note of 9,600 ticks or more that its track waits out counts as held. Games use such
-notes, minutes long at a typical tempo, for sounds that they stop themselves. The cap also
+Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks
+or more that its track waits out counts as held. Games use such notes, minutes long at a
+typical tempo, for sounds that they stop themselves. The cap also
 covers a main loop longer than 10 seconds that ends with more than 10 seconds of no change and
 sounds only endless notes held with tie or mono. The game's next pass usually continues those
 notes. A sequence that finishes naturally ends with its last sound, including release. A note
@@ -139,7 +148,7 @@ tick ends with. MIDI controller changes are written before the notes of the same
 | Track volume, up to 127 | CC7 |
 | Track volume above 127 × second volume × main volume × sound volume, plus legato velocity changes | CC11. Like nw::snd's volumes, CC7 and CC11 both act squared. Values are scaled for sequences exceeding MIDI's range (see [Differences from the game](#differences-from-the-game)). |
 | Track pan | CC10, mapped to the SoundFont pan law |
-| Pitch bend, sweep, portamento and legato key changes | Pitch bend, with RPN 0 range set per channel |
+| Pitch bend, sweep, portamento, legato key changes and a pitch LFO that changes during a note | Pitch bend, with RPN 0 range set per channel |
 | First LFO's depth | CC1 = depth / 2, mapped to vibrato or tremolo in the SoundFont |
 | Effect send A | CC91 (reverb) |
 | Immediate track silence | CC120 |
@@ -188,9 +197,13 @@ different files. cafesf2 uses the first group's copy. The copies play the same w
 
 Some games keep groups outside the archive, in files that the game loads itself. cafesf2 looks
 for each such group as `<group name>.bfgrp` beside the archive, or in a `userManagementFiles`
-folder beside it. When cafesf2 finds none of them, a warning says so. Archives from other
-consoles are refused: the 3DS's `.bcsar`, the Wii's `.brsar` and the Switch's `.bfsar`. The
-Switch's archives are little-endian, and the Wii U's archives are big-endian.
+folder beside it. Some games keep these group files in SARC archives under other names. While a
+group is still missing, cafesf2 also reads the group files in the `.sarc` files beside the
+archive. A folder can hold another archive's group files too. cafesf2 takes a group file from a
+SARC only if its files are of the kinds that the archive gives them. When cafesf2 finds none of
+the groups, a warning says so. Archives from other consoles are refused: the 3DS's `.bcsar`, the
+Wii's `.brsar` and the Switch's `.bfsar`. The Switch's archives are little-endian, and the Wii
+U's archives are big-endian.
 
 ## SFZ files
 
@@ -277,8 +290,12 @@ in MIDI, SoundFont or SFZ:
   the beginning of its cycle. The other three LFOs, and other curves (triangle, saw, square and
   random) and phases, are reported. A note keeps the speed, range, type and delay that the track
   has at the end of the note-on's tick. The game gives the note those settings then. The game
-  also updates them during playback. A note that plays its LFO with later settings is reported.
-  Depth changes work through CC1.
+  also updates them during playback. A note whose pitch LFO changes while it sounds plays on a
+  MIDI channel of its own. On that channel, pitch bends follow the curve and phase of the game's
+  LFO frame by frame. Only a random curve is still reported there. The random numbers of such a
+  curve can differ from those in the game. A volume or pan LFO that changes during a note is
+  reported. So is a pitch LFO that changes when no MIDI channel is free. Depth changes work
+  through CC1.
 - **Deep tremolo.** In the game, a volume LFO can lower a note as far as silence but can raise
   it by no more than 6 dB. The SoundFont and SFZ LFOs swing as far up as down. A volume LFO
   deeper than 6 dB is kept to a 6 dB swing and reported. Such a tremolo dips less than in the
@@ -286,8 +303,8 @@ in MIDI, SoundFont or SFZ:
 - **SoundFont filters.** The two-pole low-pass closely matches the biquad low-pass. For the
   one-pole track filter, the two-pole low-pass passes slightly more just above cutoff and less
   in the top octave. The two-pole filter's slope is twice as steep. Cutoffs are fitted by
-  `tools/filter_tables.py`. High-pass and band-pass are omitted. Two active low-passes use the
-  lower cutoff. SFZ has all these filters.
+  ntdlib's `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted. Two
+  active low-passes use the lower cutoff. SFZ has all these filters.
 - **Routing.** Surround pan, main send and effect sends B and C are omitted. Pan LFO is omitted
   from SoundFont but included in SFZ. Effect send A becomes the synth's reverb send. Each game
   sets up the effects on its aux buses. A send to a bus without an effect is lost. In amiibo
@@ -304,10 +321,13 @@ in MIDI, SoundFont or SFZ:
   interpolation, and SoundFont synths use their usual interpolation. A region with no
   interpolation plays its wave without rate conversion in the game. cafesf2 pitches such a
   region as usual.
-- **Voice limits.** nw::snd has 96 voices unless a game sets fewer. Synths usually have more. If
-  a track starts over 96 notes in one tick, cafesf2 keeps the first 96. The game keeps the
-  newest 96. After 96 legatos in a tick, the MIDI note continues with its existing preset and no
-  gain above its starting level. Legatos that would otherwise require a new note are reported.
+- **Voice limits.** nw::snd has 96 voices unless a game sets fewer. Synths usually have more. By
+  default, cafesf2 keeps the notes that the game drops for lack of a voice. With `--voices N`,
+  cafesf2 drops them as its model of the game does. If a track then starts over 96 notes in one
+  tick, cafesf2 keeps the first 96. The game keeps the newest 96. Without `--voices`, the limit
+  is 1024 notes a tick. After 96 legatos in a tick, the MIDI note continues with its existing
+  preset and no gain above its starting level. Legatos that would otherwise require a new note
+  are reported.
 
 SoundFont output follows the specification and targets FluidSynth. Player differences remain:
 
@@ -343,15 +363,16 @@ SoundFont output follows the specification and targets FluidSynth. Player differ
 
 ## Building
 
-Requires C++20 and CMake 3.20 or later, with no other build dependencies. CI builds and tests
-Windows/MSVC x64, macOS/Apple Clang on Apple Silicon and Intel, and Linux/GCC and Clang x64.
+Requires C++20 and CMake 3.20 or later. The seqlib, xsflib and ntdlib libraries are Git
+submodules in `externals/`. Clone the repository with `git clone --recursive`, or run
+`git submodule update --init` in an existing clone. cafesf2 supports macOS on Apple Silicon and
+Windows x64 with clang-cl. CI builds and tests both.
 
-- **Windows:** install Visual Studio 2022 or later with "Desktop development with C++",
-  including CMake. Use Developer PowerShell or Developer Command Prompt.
+- **Windows:** install Visual Studio 2022 with "Desktop development with C++", including CMake.
+  Add the "C++ Clang tools for Windows" component. Use Developer PowerShell or Developer Command
+  Prompt.
 - **macOS:** install Xcode command line tools (`xcode-select --install`) and CMake
   (`brew install cmake` or the installer from cmake.org).
-- **Linux:** install GCC or Clang and CMake. On Debian/Ubuntu:
-  `sudo apt install build-essential cmake`.
 
 From the repository root:
 
@@ -361,47 +382,30 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
+On Windows, the first command is `cmake -S . -B build -A x64 -T ClangCL`. It selects clang-cl
+and 64-bit output.
+
 The executable is `build/cafesf2`, or `build/Release/cafesf2.exe` with Visual Studio. Xcode and
-other multi-configuration generators also use `build/Release`. MSVC links the runtime
-statically. The executable requires no runtime DLLs. CI uploads the Windows executable as an
+other multi-configuration generators also use `build/Release`. The Windows build links the
+runtime statically. The executable requires no runtime DLLs. CI uploads the Windows executable as an
 artifact. macOS builds also produce `build/Cafesf2.app`. The app holds a copy of the program.
 You can move the app elsewhere.
 
 C++ formatting uses clang-format with the repository's `.clang-format`.
 
-## Tests and tools
+## Tests
 
-`ctest` runs unit tests without game data. Coverage includes:
+`ctest` checks that the program reports its version and rejects a variable that the game
+doesn't have. The conversion's unit tests are in the seqlib and ntdlib libraries. They run on
+synthetic files, without game data.
 
-- DSP-ADPCM and PCM16 decoding, including nw::snd's two-channel limit and files in either
-  byte order.
-- Truncated files, missing blocks, oversized wave/region counts, invalid bank/wave references,
-  names containing control characters, line breaks or invalid UTF-8, and other consoles'
-  archives.
-- Group file lookup, malformed groups/tables, partial files, fallback to complete copies,
-  groups missing from truncated archives, and group files kept outside the archive. Archive
-  truncation is distinguished from invalid file offsets in otherwise complete archives.
-- Sequence start offsets and bank slots, loop detection, held loops, the time limit, tie/mono
-  and legato gain scaling, unheard notes, one-shot completion, tick rounding, unusual arguments,
-  the Wii U's commands, stopped timing, variable polling, loops without waits, voice limits and
-  approximation reports.
-- Envelope conversion, pitch ratios, LFOs, pan, SoundFont/SFZ filters and loop unrolling.
-- SoundFont/MIDI output checked by independent readers, SFZ/WAV output and file naming.
-
-Other checks and tools:
-
-- `-DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar` adds the conversion of every sequence in that
-  archive. Independent readers check each output file.
-- `tools/check_sf2.py` checks SoundFont structure using Python alone.
-- `tools/filter_tables.py` derives the SoundFont and SFZ filter tables in `src/filter.cpp`
-  from a locally supplied Animal Crossing: amiibo Festival executable, `code/bbq.rpx`.
-  Requires Python 3 and numpy.
-
-These development tools require game files supplied separately. cafesf2 doesn't distribute those
-files. Normal conversion requires only the input `.bfsar` archive, and any group files beside
-it.
+`-DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar` adds the conversion of every sequence in that
+archive. Independent readers check each output file. This check requires an archive from a game,
+supplied separately. cafesf2 doesn't distribute game files. Normal conversion requires only the
+input `.bfsar` archive, and any group files beside it.
 
 ## Licence
 
-[MIT](LICENSE). cafesf2 is built from citrusf2's MIT-licensed code, and follows the
-MIT-licensed 3SF project's model of nw::snd. Game data is not covered by this licence.
+cafesf2 is under the [MIT](LICENSE) licence. The libraries it builds on, seqlib, xsflib and
+ntdlib, are under the MIT licence too. `THIRD-PARTY-NOTICES.md` gives their licence texts.
+Game data is not covered by this licence.

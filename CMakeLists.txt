@@ -3,100 +3,44 @@
 cmake_minimum_required(VERSION 3.20)
 # cafesf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(cafesf2 VERSION 1.0.0 LANGUAGES CXX)
+project(cafesf2 VERSION 1.0.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  set(CMAKE_BUILD_TYPE Release)
+# seqlib writes the MIDI and SoundFont files. ntdlib reads Nintendo's sound formats and converts the sequences and
+# instruments. xsflib holds the code that any PSF-family program could use, and the CMake functions that make the
+# version resource and the app. All three are submodules. xsflib's XsflibProject.cmake sets the C++ standard, a release
+# build by default, the static C runtime and the compiler options that keep the output the same on every platform.
+# seqlib comes first: ntdlib's sequence_export uses it.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/xsflib/CMakeLists.txt")
+  message(FATAL_ERROR "externals/xsflib is missing. Run: git submodule update --init")
 endif()
-if(MSVC)
-  add_compile_options(/W4 /utf-8)
-  # Link the runtime statically so the drag-and-drop executable runs without runtime DLLs.
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-else()
-  # Disable FMA contraction. Clang enables it by default on CPUs such as Apple Silicon. Without it, results are the
-  # same on every platform and centre pan is exactly zero (pan.h).
-  add_compile_options(-Wall -Wextra -ffp-contract=off)
-  # Use SSE2 on 32-bit x86 to avoid x87's extra precision. Results then match 64-bit x86.
-  if(CMAKE_SIZEOF_VOID_P EQUAL 4 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86|x86_64|AMD64)$")
-    add_compile_options(-msse2 -mfpmath=sse)
-  endif()
-endif()
+include(externals/xsflib/cmake/XsflibProject.cmake)
+xsflib_project(WARNINGS_ON_EVERY_TARGET)
+set(NTDLIB_SEQUENCE_EXPORT ON)
+xsflib_add_libraries(seqlib xsflib ntdlib)
 
-add_library(cafesf2_core STATIC
-  src/fsar.cpp
-  src/wave.cpp
-  src/instruments.cpp
-  src/envelope.cpp
-  src/pitch.cpp
-  src/filter.cpp
-  src/performance.cpp
-  src/midi.cpp
-  src/sf2.cpp
-  src/sfz.cpp
-  src/convert.cpp)
-target_include_directories(cafesf2_core PUBLIC src)
+# The libraries that cafesf2, its test and its tools link.
+add_library(cafesf2_core INTERFACE)
+target_link_libraries(cafesf2_core INTERFACE seqlib::seqlib ntdlib::sar ntdlib::sequence_export)
 
 add_executable(cafesf2 src/main.cpp)
 target_link_libraries(cafesf2 PRIVATE cafesf2_core)
-target_compile_definitions(cafesf2 PRIVATE CAFESF2_VERSION="${PROJECT_VERSION}")
-if(WIN32)
-  target_link_libraries(cafesf2 PRIVATE shell32) # CommandLineToArgvW
-  # A version resource. Explorer shows its version and description in the file's properties.
-  configure_file(platform/windows/version.rc.in version.rc @ONLY)
-  target_sources(cafesf2 PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc")
-endif()
+xsflib_add_version(cafesf2 VERSION ${PROJECT_VERSION} DEFINE CAFESF2_VERSION
+                   DESCRIPTION "Nintendo Wii U sound archive converter" PRODUCT cafesf2
+                   COPYRIGHT "Copyright (c) 2026 the cafesf2 authors. MIT licence.")
 
 # Finder cannot drop files onto a command-line executable. Package it in a macOS droplet app, with the version in its
 # Info.plist.
-if(APPLE)
-  find_program(OSACOMPILE osacompile)
-  find_program(CODESIGN codesign)
-  find_program(PLUTIL plutil)
-  if(OSACOMPILE AND CODESIGN AND PLUTIL)
-    set(app "${CMAKE_CURRENT_BINARY_DIR}/Cafesf2.app")
-    set(app_script "${PROJECT_SOURCE_DIR}/platform/macos/Cafesf2.applescript")
-    add_custom_command(
-      OUTPUT "${app}/Contents/Resources/cafesf2"
-      COMMAND "${CMAKE_COMMAND}" -E rm -rf "${app}"
-      COMMAND "${OSACOMPILE}" -o "${app}" "${app_script}"
-      COMMAND "${PLUTIL}" -replace CFBundleShortVersionString -string "${PROJECT_VERSION}" "${app}/Contents/Info.plist"
-      COMMAND "${PLUTIL}" -replace CFBundleVersion -string "${PROJECT_VERSION}" "${app}/Contents/Info.plist"
-      COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:cafesf2>" "${app}/Contents/Resources/cafesf2"
-      COMMAND "${CODESIGN}" --force --deep --sign - "${app}"
-      DEPENDS cafesf2 "${app_script}"
-      COMMENT "Building Cafesf2.app"
-      VERBATIM)
-    add_custom_target(cafesf2_app ALL DEPENDS "${app}/Contents/Resources/cafesf2")
-  endif()
-endif()
+xsflib_add_droplet_tool(cafesf2 APP_NAME Cafesf2 VERSION ${PROJECT_VERSION}
+                         DESCRIPTION "Drop Wii U sound archives (.bfsar) here to convert them to MIDI, SoundFont and SFZ."
+                         PROMPT "Choose Wii U sound archives (.bfsar) to convert:" TRUNCATED GROUPS)
 
 include(CTest)
 if(BUILD_TESTING)
-  add_executable(cafesf2_test tests/cafesf2_test.cpp)
-  target_link_libraries(cafesf2_test PRIVATE cafesf2_core)
-  add_test(NAME cafesf2_units COMMAND cafesf2_test)
-
-  # The program reports the version it was built as.
-  string(REPLACE "." "\\." version_pattern "${PROJECT_VERSION}")
-  add_test(NAME cafesf2_version COMMAND cafesf2 --version)
-  set_tests_properties(cafesf2_version PROPERTIES PASS_REGULAR_EXPRESSION "^cafesf2 ${version_pattern}[\r\n]*$")
-
-  # It rejects a variable that the game doesn't have.
-  add_test(NAME cafesf2_var_range COMMAND cafesf2 --var 32=1 missing.bfsar)
-  set_tests_properties(cafesf2_var_range PROPERTIES PASS_REGULAR_EXPRESSION "--var 32=1 is out of range")
-  # Optionally convert and validate a complete archive:
-  # -DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar
-  set(CAFESF2_TEST_ARCHIVE "" CACHE FILEPATH "Sound archive (.bfsar) for the conversion test")
-  if(CAFESF2_TEST_ARCHIVE AND EXISTS "${CAFESF2_TEST_ARCHIVE}")
-    add_test(NAME cafesf2_archive COMMAND cafesf2_test "${CAFESF2_TEST_ARCHIVE}")
-  endif()
+  # The program reports its version, and it rejects --var 32=1. -DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar also
+  # converts and checks every sequence of an archive with tests/cafesf2_test.cpp.
+  xsflib_add_converter_tests(cafesf2 EXTENSION .bfsar VERSION ${PROJECT_VERSION}
+                             LIBRARIES cafesf2_core ntdlib::testing)
 
   # Load local_tests.cmake from each immediate subdirectory to register tests that use locally supplied files.
-  file(GLOB local_tests CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/*/local_tests.cmake")
-  foreach(file IN LISTS local_tests)
-    include("${file}")
-  endforeach()
+  xsflib_include_local_tests()
 endif()
