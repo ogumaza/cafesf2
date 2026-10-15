@@ -185,6 +185,9 @@ regions become zones with:
   at the end of the hold as below it when its decay reaches the sustain level. Such a release
   plays at SoundFont's slowest release time. The SFZ files keep the game's times.
 - Key groups mapped to exclusive classes.
+- A low-pass for AX's resampling filters on the keys whose notes play their wave at more than
+  AX's mixing rate of 32 kHz. Such a region splits into zones where its notes' rate passes 1
+  and 4/3. See "Resampling filters" under "Differences from the game".
 - Loops repeated as needed to meet SoundFont padding rules: 8 samples before, at least 32
   within, and 8 after. This preserves playback.
 - Continued playback for regions that ignore note-off. Their MIDI notes end when the game
@@ -246,7 +249,11 @@ Regions match the SoundFont, with these differences:
   Samples include 4 ms of repeated loop data before the start. The crossfade is then inaudible.
 - **Interpolation.** A region with AX's linear interpolation gets sfizz's linear interpolation
   (`sample_quality=1`). Other regions use sfizz's default, a cubic interpolation. That's the
-  closest that sfizz has to AX's 4-tap filters.
+  closest that sfizz has to AX's 4-tap filters. Above a rate of 1, a region also gets a low-pass
+  for the highs that AX's filters lose beyond the cubic interpolation: `lpf_1p`, with a cutoff
+  that tracks the key (`fil_keytrack=100`). The low-pass takes a filter that the track's filters
+  leave free. A track that uses both its low-pass and its biquad leaves none while the biquad is
+  on. Its regions then play without this low-pass.
 
 Two sfizz 1.2.3 quirks affect playback:
 
@@ -302,9 +309,14 @@ in MIDI, SoundFont or SFZ:
   game.
 - **SoundFont filters.** The two-pole low-pass closely matches the biquad low-pass. For the
   one-pole track filter, the two-pole low-pass passes slightly more just above cutoff and less
-  in the top octave. The two-pole filter's slope is twice as steep. Cutoffs are fitted by
-  ntdlib's `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted. Two
-  active low-passes use the lower cutoff. SFZ has all these filters.
+  in the top octave. The two-pole filter's slope is twice as steep. Cutoffs come from tables
+  fitted by ntdlib's `tools/sequence_export/filter_tables.py`. With a table's cutoff, a sound
+  whose power lies just above a low cutoff can play several decibels louder than in the game.
+  Where a table's cutoff misses the game's level by more than 1 dB at a key that the sequence
+  plays, the zone takes the cutoff at which FluidSynth passes as much of the zone's wave as the
+  game does. High-pass and band-pass are omitted. Two active low-passes use the lower cutoff. A
+  resampling low-pass (see "Resampling filters") counts as one of them. SFZ has all these
+  filters.
 - **Routing.** Surround pan, main send and effect sends B and C are omitted. Pan LFO is omitted
   from SoundFont but included in SFZ. Effect send A becomes the synth's reverb send. Each game
   sets up the effects on its aux buses. A send to a bus without an effect is lost. In amiibo
@@ -321,6 +333,17 @@ in MIDI, SoundFont or SFZ:
   interpolation, and SoundFont synths use their usual interpolation. A region with no
   interpolation plays its wave without rate conversion in the game. cafesf2 pitches such a
   region as usual.
+- **Resampling filters.** AX converts each voice's wave to the 32 kHz mix through one of three
+  sets of 4-tap filters. AX selects the set when the voice starts, by the voice's rate: the
+  wave's sample rate times the pitch ratio, over 32 kHz. Above a rate of 1, the selected set
+  cuts the highest frequencies. Above 4/3, the set cuts more of them. Regions with linear or no
+  interpolation play without these filters. cafesf2 splits each zone and region at the keys
+  where the rate passes 1 and 4/3. The upper parts get a low-pass whose cutoff tracks the key.
+  The cutoffs are fitted for FluidSynth at 44.1 kHz and sfizz at 48 kHz, their default rates. A
+  zone takes its filter by the key, without bend, sweep or LFO. A note that starts with its
+  bend, sweep or LFO across a threshold therefore plays through its key's low-pass. A SoundFont
+  preset whose filter changes during notes (CC102) gets no such low-pass. Its notes above a rate
+  of 1 are reported. The SFZ files keep the low-pass.
 - **Voice limits.** nw::snd has 96 voices unless a game sets fewer. Synths usually have more. By
   default, cafesf2 keeps the notes that the game drops for lack of a voice. With `--voices N`,
   cafesf2 drops them as its model of the game does. If a track then starts over 96 notes in one
@@ -331,6 +354,11 @@ in MIDI, SoundFont or SFZ:
 
 SoundFont output follows the specification and targets FluidSynth. Player differences remain:
 
+- **Level.** FluidSynth runs the SoundFont low-pass filter on every note. That includes notes
+  whose filter is open. The filter divides the level by the square root of its Q. FluidSynth
+  converts the default resonance of 0 dB to a Q of 0.707. Every note therefore plays 1.5 dB
+  louder than the SoundFont specifies. Multiplying FluidSynth's gain by 0.84 gives the specified
+  level.
 - **Pan.** Pans are mapped from nw::snd's square-root law to FluidSynth's sin/cos law.
   TinySoundFont uses a square-root law. That gives a slightly narrower result.
 - **Envelopes.** Times follow the specification's 100 dB range. FluidSynth uses 96 dB. Decays
