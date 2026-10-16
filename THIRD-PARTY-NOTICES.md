@@ -6,7 +6,7 @@ cafesf2 is under the MIT licence (`LICENSE`). The libraries it builds on are und
 |---|---|---|
 | seqlib, Copyright (c) 2026 the seqlib authors | MIT (`externals/seqlib/LICENSE`) | In `externals/seqlib`, a submodule, compiled into cafesf2: the MIDI, SoundFont 2 and SFZ files and their samples. |
 | xsflib, Copyright (c) 2026 the xsflib authors | MIT (`externals/xsflib/LICENSE`) | In `externals/xsflib`, a submodule, compiled into cafesf2: bounds-checked reads in either byte order, file input and output with UTF-8 paths, the printable form of names, the console's UTF-8 arguments and output, the Windows version resource and the macOS app's droplet script. |
-| ntdlib, Copyright (c) 2026 the ntdlib authors | MIT (`externals/ntdlib/LICENSE`) | In `externals/ntdlib`, a submodule, compiled into cafesf2: the sound archive and wave readers, the sequence player, the conversion of instruments and filters, and the command line's options, help and messages. |
+| ntdlib, Copyright (c) 2026 the ntdlib authors | MIT (`externals/ntdlib/LICENSE`) | In `externals/ntdlib`, a submodule, compiled into cafesf2: the sound archive and wave readers, the readers of JAudio's sound data in both generations, the sequence players of nw::snd and JAudio, the conversion of instruments and filters, and the command line's options, help and messages. |
 
 Binary distributions must include the MIT notices of cafesf2, seqlib, xsflib and ntdlib. Shipping `LICENSE` and this file
 does that. The licence texts follow.

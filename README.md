@@ -2,10 +2,12 @@
 
 cafesf2 converts Nintendo Wii U sound archives (`.bfsar`) to MIDI, SoundFont 2 and SFZ.
 Each sequence gets a MIDI file and a SoundFont containing its instruments. SFZ output includes
-filters that SoundFont cannot reproduce (see [SFZ files](#sfz-files)).
+filters that SoundFont cannot reproduce (see [SFZ files](#sfz-files)). cafesf2 also converts the
+music of Wii U games that play their sound through JAudio (see [JAudio games](#jaudio-games)).
 
 Drop archives onto `cafesf2.exe` on Windows or `Cafesf2.app` on macOS. Output goes in a folder
-beside each archive. From a terminal:
+beside each archive. An input can also be a JAudio game's start-up archive (`.baa` or `.aaf`).
+From a terminal:
 
 ```
 cafesf2 [options] <archive.bfsar> [<archive.bfsar> ...]
@@ -46,6 +48,49 @@ Wii U games play their sequences with Nintendo's sound library, nw::snd. cafesf2
 nw::snd does. The model of the Wii U's timing, voices and commands comes from Animal Crossing:
 amiibo Festival's executable.
 
+## JAudio games
+
+Some Wii U games play their sound through JAudio, the sound library in Nintendo EAD's JSystem,
+and not through nw::snd. Twilight Princess HD and The Wind Waker HD are two of them. cafesf2
+converts their music. Give it the game's start-up archive, with the game's other sound files
+beside it as in the title's `content` folder. The files go in `<archive name>_cafesf2` beside
+the archive.
+
+JAudio comes in two generations. They lay out their files differently:
+
+- **JAudio2** (Twilight Princess HD): the start-up archive (`.baa`) contains the sound table and
+  the sounds' names, the instrument banks and the wave systems. The sequence archive (an RARC
+  archive in a `Seqs` folder beside it) contains the sequences. The wave archives (`.aw` files
+  in a `Waves` folder) contain the samples.
+- **The first JAudio** (The Wind Waker HD): the start-up archive (`.aaf`) contains the sound
+  table, the instrument banks and the wave systems. A sequence table (`.bdt`) in a `Seqs` folder
+  beside it contains the sequences. The wave archives (`.aw` files in a `Banks` folder) contain
+  the samples. A name file (`.asn`) beside the start-up archive gives the sounds' names.
+
+The sequences come from the game's sound table, in its order. JAudio2's sound effects are
+sequences too. They convert with the music. The first JAudio plays a game's sound effects in one
+sequence that the game's code steers. cafesf2 leaves that sequence out. Files take the names
+that the game gives the sounds. A sound without a name becomes
+`SOUND_<section>_<group>_<index>`. A sequence that no sound plays comes last. It keeps the name
+of its file in the sequence archive. In a sequence table, it becomes `SEQUENCE_<number>`.
+
+`--loops`, `--seed` and `--only` work as for a sound archive. The game's random state starts at
+0 unless `--seed` gives another. The game steers some sequences through ports. cafesf2 starts
+each port at 0, as the game does. JAudio's sequences have no variables. `--var` changes nothing
+in them. By default, cafesf2 keeps every note. `--voices N` drops the notes that JAudio would
+drop with N voices. On the GameCube, JAudio has 64. The result only approximates the game.
+
+JAudio times its music for the GameCube's rate of about 32,028 Hz. The Wii U plays it at
+32,000 Hz. There the music plays 0.089% slower and 1.5 cents lower than in the files.
+
+MIDI and SoundFont can't hold everything that JAudio does. The fitted envelopes can't follow an
+oscillator's table that rises again or loops. Random instrument effects play at their base
+values. Tremolos, track filters, pitch envelopes and notes on the DSP's built-in oscillators are
+left out. A vibrato deeper than a semitone is kept to a semitone. In the first JAudio's
+sequences, a track that shares its parent's voices gets separate voices. The oscillators that a
+track sets and the tempos of child tracks are left out there. cafesf2 reports each of these for
+each sequence.
+
 ## Downloads
 
 The Releases page has cafesf2 for 64-bit Windows. On macOS on Apple Silicon, build it from
@@ -53,8 +98,8 @@ source (see [Building](#building)).
 
 ## Drag and drop
 
-- **Windows:** drop one or more `.bfsar` files onto `cafesf2.exe`. The console shows the results
-  and waits for Enter before closing.
+- **Windows:** drop one or more `.bfsar`, `.baa` or `.aaf` files onto `cafesf2.exe`. The console
+  shows the results and waits for Enter before closing.
 - **macOS:** drop archives onto `Cafesf2.app`, or open it to choose files. The app shows the
   results and can open the output folders. The app wraps the command-line program because Finder
   cannot drop files onto a bare executable. The [build](#building) includes the app.
@@ -424,13 +469,14 @@ C++ formatting uses clang-format with the repository's `.clang-format`.
 ## Tests
 
 `ctest` checks that the program reports its version and rejects a variable that the game
-doesn't have. The conversion's unit tests are in the seqlib and ntdlib libraries. They run on
-synthetic files, without game data.
+doesn't have. It converts a small JAudio2 game that the test program writes, from the game's
+start-up archive. The conversion's unit tests are in the seqlib and ntdlib libraries. They run
+on synthetic files, without game data.
 
 `-DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar` adds the conversion of every sequence in that
 archive. Independent readers check each output file. This check requires an archive from a game,
 supplied separately. cafesf2 doesn't distribute game files. Normal conversion requires only the
-input `.bfsar` archive, and any group files beside it.
+input: a `.bfsar` archive and any group files beside it, or a JAudio game's sound files.
 
 ## Licence
 
