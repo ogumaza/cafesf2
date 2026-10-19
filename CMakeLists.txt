@@ -3,13 +3,15 @@
 cmake_minimum_required(VERSION 3.20)
 # cafesf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(cafesf2 VERSION 1.1.0 LANGUAGES CXX)
+project(cafesf2 VERSION 1.1.1 LANGUAGES CXX)
 
-# seqlib writes the MIDI and SoundFont files. ntdlib reads Nintendo's sound formats and converts the sequences and
-# instruments. xsflib holds the code that any PSF-family program could use, and the CMake functions that make the
-# version resource and the app. All three are submodules. xsflib's XsflibProject.cmake sets the C++ standard, a release
-# build by default, the static C runtime and the compiler options that keep the output the same on every platform.
-# seqlib comes first: ntdlib's sequence_export uses it.
+# The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that cafesf2 shares
+# with the other converters and the players: the archive reader, the performer, the conversion and the command-line
+# frame (ntdlib::sequence_export). xsflib holds the common code that ntdlib builds on, and the CMake helpers. xsflib's
+# XsflibProject.cmake sets the C++ standard, a release build by default, the static C runtime and the compiler options
+# that keep the output the same on every platform. ntdlib builds on seqlib and xsflib. xsflib_add_libraries adds ntdlib
+# last. XsflibProject.cmake defines that function. The function stops if a submodule is missing. The check below
+# covers xsflib itself.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/xsflib/CMakeLists.txt")
   message(FATAL_ERROR "externals/xsflib is missing. Run: git submodule update --init")
 endif()
@@ -18,12 +20,13 @@ xsflib_project(WARNINGS_ON_EVERY_TARGET)
 set(NTDLIB_SEQUENCE_EXPORT ON)
 xsflib_add_libraries(seqlib xsflib ntdlib)
 
-# The libraries that cafesf2, its test and its tools link.
+# The libraries that cafesf2 and its tests link. ntdlib's sequence_export/consoles.h holds the Wii U's settings. The
+# program also links ntdlib's conversion of JAudio games (sequence_export_jaudio).
 add_library(cafesf2_core INTERFACE)
 target_link_libraries(cafesf2_core INTERFACE seqlib::seqlib ntdlib::sar ntdlib::sequence_export)
 
 add_executable(cafesf2 src/main.cpp)
-target_link_libraries(cafesf2 PRIVATE cafesf2_core)
+target_link_libraries(cafesf2 PRIVATE cafesf2_core ntdlib::sequence_export_jaudio)
 xsflib_add_version(cafesf2 VERSION ${PROJECT_VERSION} DEFINE CAFESF2_VERSION
                    DESCRIPTION "Nintendo Wii U sound archive converter" PRODUCT cafesf2
                    COPYRIGHT "Copyright (c) 2026 the cafesf2 authors. MIT licence.")
@@ -31,8 +34,8 @@ xsflib_add_version(cafesf2 VERSION ${PROJECT_VERSION} DEFINE CAFESF2_VERSION
 # Finder cannot drop files onto a command-line executable. Package it in a macOS droplet app, with the version in its
 # Info.plist.
 xsflib_add_droplet_tool(cafesf2 APP_NAME Cafesf2 VERSION ${PROJECT_VERSION}
-                         DESCRIPTION "Drop Wii U sound archives (.bfsar) or JAudio start-up archives (.baa, .aaf) here to convert them to MIDI, SoundFont and SFZ."
-                         PROMPT "Choose Wii U sound archives (.bfsar) or JAudio start-up archives (.baa, .aaf) to convert:" TRUNCATED GROUPS)
+                        DESCRIPTION "Drop Wii U sound archives (.bfsar) or JAudio start-up archives (.baa, .aaf) here to convert them to MIDI, SoundFont and SFZ. Output goes in a folder beside each archive."
+                        PROMPT "Choose Wii U sound archives (.bfsar) or JAudio start-up archives (.baa, .aaf) to convert:" TRUNCATED GROUPS)
 
 include(CTest)
 if(BUILD_TESTING)

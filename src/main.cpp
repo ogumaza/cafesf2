@@ -11,6 +11,7 @@
 #include "ntdlib/sar/formats.h"
 #include "ntdlib/sequence_export/archive_converter.h"
 #include "ntdlib/sequence_export/consoles.h"
+#include "ntdlib/sequence_export/jaudio/archive_games.h"
 
 int main(int argc, char** argv)
 {
@@ -25,7 +26,6 @@ int main(int argc, char** argv)
     converter.extension = ".bfsar";
     converter.settings = ntdlib::sequence_export::CafeSettings();
     converter.group_files = true;
-    converter.jaudio_games = true;
 
-    return ntdlib::sequence_export::RunArchiveConverter(argc, argv, converter);
+    return ntdlib::sequence_export::jaudio::RunArchiveConverterWithGames(argc, argv, converter);
 }

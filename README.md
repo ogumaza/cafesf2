@@ -136,24 +136,27 @@ controllers. The performer follows the Wii U's nw::snd player, including:
   that wait forever, on held notes or for a negative number of ticks, do not block this choice.
   A pass that changes nothing, such as one that only polls or counts a variable, qualifies only
   while no other track changes the sound or plays on. Setting a variable that another track
-  reads counts as a change. A track that has sounded nothing and changed nothing for 10 seconds
+  reads counts as a change. A tie or mono legato on a note below hearing (see below) changes
+  nothing that can be heard. A track that has sounded nothing and changed nothing for 10 seconds
   doesn't count as playing on. A sequence whose tracks all reach their end has no main loop.
   Backward jumps to unvisited commands and passes without waits, such as random retries or
   variable polling, are not loops. Inside a subroutine, a jump back isn't a loop when its pass
   played no note that can be heard and ran a conditional jump, call, return or end that could
   leave the loop. A tie or mono legato on a note below hearing (see below) plays nothing that
-  can be heard. A held note that sounds until the game stops it keeps such a loop. A main loop
-  in which no note starts isn't a loop either once every earlier note has ended or is fading
-  out. The sequence then ends with its last sound. The markers go on the first pass that a
-  player looping on them repeats as the game plays the next one: the same notes at the same
-  times, with the same settings and tempo. The first pass often differs. Setup before the loop
-  can land in its first tick. The game can keep a value from pass to pass. Later passes may only
-  tie again a note that the first pass strikes. If no pass so far repeats that way but the next
-  pass does, the performance plays that pass too. Otherwise the markers stay on the first pass.
-  They also stay there in a loop that draws random numbers. At the loop's start, the MIDI file
-  sends each controller, pitch, preset and tempo that the game gives back there when the loop
-  ends with another value. Without those events, a player that loops on the markers would keep
-  the value from the loop's end.
+  can be heard. A held note that sounds until the game stops it keeps such a loop. A loop that a
+  track runs inside a pass of another loop, such as a countdown of waits between notes, is an
+  inner loop. An inner loop's passes don't qualify until the track has played no pass of another
+  loop for 10 seconds. A main loop in which no note starts isn't a loop either once every
+  earlier note has ended or is fading out. The sequence then ends with its last sound. The
+  markers go on the first pass that a player looping on them repeats as the game plays the next
+  one: the same notes at the same times, with the same settings and tempo. The first pass often
+  differs. Setup before the loop can land in its first tick. The game can keep a value from pass
+  to pass. Later passes may only tie again a note that the first pass strikes. If no pass so far
+  repeats that way but the next pass does, the performance plays that pass too. Otherwise the
+  markers stay on the first pass. They also stay there in a loop that draws random numbers. At
+  the loop's start, the MIDI file sends each controller, pitch, preset and tempo that the game
+  gives back there when the loop ends with another value. Without those events, a player that
+  loops on the markers would keep the value from the loop's end.
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
 Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks
@@ -234,7 +237,7 @@ regions become zones with:
   AX's mixing rate of 32 kHz. Such a region splits into zones where its notes' rate passes 1
   and 4/3. See "Resampling filters" under "Differences from the game".
 - Loops repeated as needed to meet SoundFont padding rules: 8 samples before, at least 32
-  within, and 8 after. This preserves playback.
+  within, and 32 after. This preserves playback.
 - Continued playback for regions that ignore note-off. Their MIDI notes end when the game
   would release them, with release settings that also preserve decay after a repeated strike.
 
@@ -392,10 +395,10 @@ in MIDI, SoundFont or SFZ:
 - **Voice limits.** nw::snd has 96 voices unless a game sets fewer. Synths usually have more. By
   default, cafesf2 keeps the notes that the game drops for lack of a voice. With `--voices N`,
   cafesf2 drops them as its model of the game does. If a track then starts over 96 notes in one
-  tick, cafesf2 keeps the first 96. The game keeps the newest 96. Without `--voices`, the limit
-  is 1024 notes a tick. After 96 legatos in a tick, the MIDI note continues with its existing
-  preset and no gain above its starting level. Legatos that would otherwise require a new note
-  are reported.
+  tick, cafesf2 keeps the first 96. The game keeps the first 96 too. Without `--voices`, the
+  limit is 1024 notes a tick. After 96 legatos in a tick, the MIDI note continues with its
+  existing preset and no gain above its starting level. Legatos that would otherwise require a
+  new note are reported.
 
 SoundFont output follows the specification and targets FluidSynth. Player differences remain:
 
@@ -436,16 +439,23 @@ SoundFont output follows the specification and targets FluidSynth. Player differ
 
 ## Building
 
-Requires C++20 and CMake 3.20 or later. The seqlib, xsflib and ntdlib libraries are Git
-submodules in `externals/`. Clone the repository with `git clone --recursive`, or run
-`git submodule update --init` in an existing clone. cafesf2 supports macOS on Apple Silicon and
-Windows x64 with clang-cl. CI builds and tests both.
+Requires C++20 and CMake 3.20 or later. cafesf2 supports macOS on Apple Silicon and Windows x64
+with clang-cl. CI builds both. It runs the tests on Windows.
 
 - **Windows:** install Visual Studio 2022 with "Desktop development with C++", including CMake.
   Add the "C++ Clang tools for Windows" component. Use Developer PowerShell or Developer Command
   Prompt.
 - **macOS:** install Xcode command line tools (`xcode-select --install`) and CMake
   (`brew install cmake` or the installer from cmake.org).
+
+cafesf2 builds on three libraries: seqlib, xsflib and ntdlib. The repository holds them as Git
+submodules in `externals/`. Clone it with its submodules:
+
+```sh
+git clone --recursive <repository URL>
+```
+
+In a clone made without `--recursive`, run `git submodule update --init` first.
 
 From the repository root:
 
@@ -466,17 +476,27 @@ You can move the app elsewhere.
 
 C++ formatting uses clang-format with the repository's `.clang-format`.
 
-## Tests
+## Tests and tools
 
 `ctest` checks that the program reports its version and rejects a variable that the game
 doesn't have. It converts a small JAudio2 game that the test program writes, from the game's
 start-up archive. The conversion's unit tests are in the seqlib and ntdlib libraries. They run
 on synthetic files, without game data.
 
-`-DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar` adds the conversion of every sequence in that
-archive. Independent readers check each output file. This check requires an archive from a game,
-supplied separately. cafesf2 doesn't distribute game files. Normal conversion requires only the
-input: a `.bfsar` archive and any group files beside it, or a JAudio game's sound files.
+Other checks and tools:
+
+- `-DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar` adds the conversion of every sequence in that
+  archive. Independent readers check each output file.
+- seqlib's `seqlib_check` program checks the structure of SoundFont and MIDI files. Configure
+  with `-DSEQLIB_BUILD_TOOLS=ON`, then build the `seqlib_check` target.
+- ntdlib's `tools/sequence_export/filter_tables.py cafe` derives the Wii U's SoundFont and SFZ
+  filter tables in ntdlib's `src/sequence_export/filter_tables_cafe.cpp` from Animal Crossing:
+  amiibo Festival's tables in ntdlib's `include/ntdlib/nwsnd/tables.h`. Requires Python 3 and
+  numpy.
+
+The archive check requires an archive from a game, supplied separately. cafesf2 doesn't
+distribute game files. Normal conversion requires only the input: a `.bfsar` archive and any
+group files beside it, or a JAudio game's sound files.
 
 ## Licence
 
