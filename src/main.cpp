@@ -27,5 +27,8 @@ int main(int argc, char** argv)
     converter.settings = ntdlib::sequence_export::CafeSettings();
     converter.group_files = true;
 
-    return ntdlib::sequence_export::jaudio::RunArchiveConverterWithGames(argc, argv, converter);
+    // The first JAudio plays a game's sound effects in one sequence. jaudio1_effects converts each effect as that
+    // sequence plays it, after the game's other sequences.
+    return ntdlib::sequence_export::jaudio::RunArchiveConverterWithGames(argc, argv, converter,
+                                                                         {.jaudio1_effects = true});
 }

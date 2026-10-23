@@ -52,9 +52,9 @@ amiibo Festival's executable.
 
 Some Wii U games play their sound through JAudio, the sound library in Nintendo EAD's JSystem,
 and not through nw::snd. Twilight Princess HD and The Wind Waker HD are two of them. cafesf2
-converts their music. Give it the game's start-up archive, with the game's other sound files
-beside it as in the title's `content` folder. The files go in `<archive name>_cafesf2` beside
-the archive.
+converts their music and sound effects. Give it the game's start-up archive, with the game's
+other sound files beside it as in the title's `content` folder. The files go in
+`<archive name>_cafesf2` beside the archive.
 
 JAudio comes in two generations. They lay out their files differently:
 
@@ -69,10 +69,15 @@ JAudio comes in two generations. They lay out their files differently:
 
 The sequences come from the game's sound table, in its order. JAudio2's sound effects are
 sequences too. They convert with the music. The first JAudio plays a game's sound effects in one
-sequence that the game's code steers. cafesf2 leaves that sequence out. Files take the names
+sequence that the game's code steers. cafesf2 converts each effect as that sequence plays it
+when the game starts the effect (see
+[The first JAudio's sound effects](#the-first-jaudios-sound-effects)). Files take the names
 that the game gives the sounds. A sound without a name becomes
-`SOUND_<section>_<group>_<index>`. A sequence that no sound plays comes last. It keeps the name
-of its file in the sequence archive. In a sequence table, it becomes `SEQUENCE_<number>`.
+`SOUND_<section>_<group>_<index>`. A sequence that no sound plays follows the sounds'
+sequences. It keeps the name of its file in the sequence archive. In a sequence table, it
+becomes `SEQUENCE_<number>`. The first JAudio's sound effects come last, in the sound table's
+order. An effect that the name file doesn't name becomes `se<category>-<index>`, such as
+`se4-0123`.
 
 `--loops`, `--seed` and `--only` work as for a sound archive. The game's random state starts at
 0 unless `--seed` gives another. The game steers some sequences through ports. cafesf2 starts
@@ -90,6 +95,35 @@ left out. A vibrato deeper than a semitone is kept to a semitone. In the first J
 sequences, a track that shares its parent's voices gets separate voices. The oscillators that a
 track sets and the tempos of child tracks are left out there. cafesf2 reports each of these for
 each sequence.
+
+### The first JAudio's sound effects
+
+The first JAudio plays all of a game's sound effects in one sequence: the first sequence of the
+sound table. The sound library starts it when the game starts. In The Wind Waker HD, the
+sequence gives each category of effects four slots. A slot is a track that waits for an effect.
+To start an effect, the library writes four of the slot's ports: a wait for the distance, the
+map's information, the effect's number and a request. The slot's track then plays the effect.
+cafesf2 plays each effect that way, in the first slot of its category. The library's writes come
+after the first tick of the effects sequence. An effect's first note therefore comes a tick
+after the start of its file. Only the slot's track and the tracks below it count for the loops
+and the end. The effect ends when its slot is free again.
+
+An effect's volume is its volume in the sound table times the volume of its category. The Wind
+Waker HD gives each of the table's eight categories of sound effects a volume. Category 1 keeps
+the volume of the sound table. Categories 3, 6 and 7 play at 0.82 of it. The others play at 0.88
+of it. cafesf2 recognizes the start-up archive of the USA release and does the same. An effect
+also plays at the pitch that the table gives it. The MIDI file holds that pitch as a pitch bend.
+A track can send its notes through the DSP's automatic mixer. That mixer sets their gains from
+their volume and pan. cafesf2 plays those notes at half the level of the others. That level
+approximates the game's mix.
+
+The game's code passes values with some effects. The map's information, such as the ground's
+material, is one of them. cafesf2 passes 0 for each. Some effects, such as footsteps, then play
+nothing. Some other effects play nothing in any case. Most of those end at once. Their files
+hold no notes.
+
+A game keeps some effects going by starting them again and again. cafesf2 plays each effect from
+one start: to its end, or with loop markers where it loops.
 
 ## Downloads
 
