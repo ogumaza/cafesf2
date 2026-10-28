@@ -88,13 +88,19 @@ drop with N voices. On the GameCube, JAudio has 64. The result only approximates
 JAudio times its music for the GameCube's rate of about 32,028 Hz. The Wii U plays it at
 32,000 Hz. There the music plays 0.089% slower and 1.5 cents lower than in the files.
 
+Programs 0xf0 and up play the DSP's built-in oscillators. The square wave, the sawtooth, the
+pulse of 25% duty, the triangle and the sine become looping samples of one cycle, one for each
+program. Each preset of such a program has one zone, for every key and velocity. The zone holds
+the oscillators' envelope: full volume until the release, then a fall to silence over about
+17 ms. The DSP changes its noise and its ramp as it plays. No sample can hold them.
+
 MIDI and SoundFont can't hold everything that JAudio does. The fitted envelopes can't follow an
 oscillator's table that rises again or loops. Random instrument effects play at their base
-values. Tremolos, track filters, pitch envelopes and notes on the DSP's built-in oscillators are
-left out. A vibrato deeper than a semitone is kept to a semitone. In the first JAudio's
-sequences, a track that shares its parent's voices gets separate voices. The oscillators that a
-track sets and the tempos of child tracks are left out there. cafesf2 reports each of these for
-each sequence.
+values. Tremolos, track filters, pitch envelopes and notes on the DSP's noise, ramp and other
+oscillators that no sample can hold are left out. A vibrato deeper than a semitone is kept to a
+semitone. In the first JAudio's sequences, a track that shares its parent's voices gets separate
+voices. The oscillators that a track sets and the tempos of child tracks are left out there.
+cafesf2 reports each of these for each sequence.
 
 ### The first JAudio's sound effects
 
@@ -329,6 +335,9 @@ Regions match the SoundFont, with these differences:
   note whose track sets the volume or pan in the note's first tick starts at that level and pan.
 - **Loops.** sfizz crossfades the loop end with data before the loop start over at least 1 ms.
   Samples include 4 ms of repeated loop data before the start. The crossfade is then inaudible.
+- **Key groups.** A note of a key group ends the group's other notes with the game's fade at
+  release rate 126 (`off_mode=time` and `off_time`). A SoundFont's exclusive class can't set
+  that fade.
 - **Interpolation.** A region with AX's linear interpolation gets sfizz's linear interpolation
   (`sample_quality=1`). Other regions use sfizz's default, a cubic interpolation. That's the
   closest that sfizz has to AX's 4-tap filters. Above a rate of 1, a region also gets a low-pass
@@ -337,7 +346,7 @@ Regions match the SoundFont, with these differences:
   leave free. A track that uses both its low-pass and its biquad leaves none while the biquad is
   on. Its regions then play without this low-pass.
 
-Three sfizz 1.2.3 quirks affect playback:
+Five sfizz 1.2.3 quirks affect playback:
 
 - **Decays and releases.** sfizz ends them sooner than the documentation's curve. Over the
   specified time, sfizz falls by a factor of e^-9: 78.17 dB. Where the game has fallen 40 dB,
@@ -348,6 +357,13 @@ Three sfizz 1.2.3 quirks affect playback:
 - **Streaming.** During offline rendering, streamed samples can fall silent after their
   preloaded part. The files load samples in full with `hint_ram_based=1`. sfizz prints
   "Unsupported value for hint_stealing: 1" for this. The message is harmless.
+- **Mono samples.** sfizz pans a mono sample by the sin/cos law and then raises both sides by
+  3 dB. Every sample of the files is mono. Every region therefore plays 3.0 dB above the game's
+  level, at every pan. The balance of the mix stays the same. Lowering sfizz's volume by 3 dB
+  gives the game's level.
+- **Repeated keys.** A key group in sfizz never cuts a note of the same key as the new note. The
+  documentation's `off_by` cuts it. A key of a group struck again therefore leaves the earlier
+  note playing in sfizz. The game fades that note out at release rate 126.
 
 The opcodes follow their documentation at sfzformat.com, with these exceptions:
 
