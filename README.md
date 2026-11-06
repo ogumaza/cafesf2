@@ -32,6 +32,24 @@ Some sequences play nothing until the game sets one of their variables. `--var` 
 each sequence starts. As in the game, player and global variables start at -1. Use `--only` to
 choose the sequences that `--var` applies to.
 
+cafesf2 has profiles for the sound archives of six games, all from the USA: Animal Crossing: amiibo
+Festival, Mario Party 10, Nintendo Land, Super Mario 3D World, New Super Mario Bros. U and
+Wii Party U (Rev 1). It finds an archive's profile by the archive's contents. In those archives, a
+sequence that waits for the game's variables starts with the values that the game's code gives it,
+where a reading of the code found them. Other values that change what the sequence plays convert as
+arrangements. Each arrangement is one more set of files, after the sequence, named after it with
+each variable and its value added, such as `SQ_SE_MG0B05_TANK_L_AXEL_15_1`. Where the game's code
+computes a value as it plays, such as a lift's speed, or where no reading found it, the sequence
+starts with -1 as before. Its arrangements then hold values that change what it plays. A profile's
+values replace those of `--var`.
+
+cafesf2 also has a profile for Kirby and the Rainbow Curse (USA). Its stage select plays one
+piece, `BGM_SEQ_MENU_INTERACTIVE`, with one to three of its tracks. The game picks them by the
+view: the area view, a world's list of stages, or a world's boss stage. The piece's files play
+the area view's track alone. Each of the 14 other states converts as an arrangement named after
+the state, such as `BGM_SEQ_MENU_INTERACTIVE world 3 boss`. A track that a state turns down
+plays at CC11 0 from the start. Its notes stay in the MIDI file.
+
 cafesf2 keeps every note. In the game, a note is dropped when every voice is in use. nw::snd has
 96 voices unless a game sets another count in its program. `--voices N` drops the notes that
 cafesf2's model of the game drops with N voices. Which notes the console drops isn't known
@@ -85,8 +103,53 @@ each port at 0, as the game does. JAudio's sequences have no variables. `--var` 
 in them. By default, cafesf2 keeps every note. `--voices N` drops the notes that JAudio would
 drop with N voices. On the GameCube, JAudio has 64. The result only approximates the game.
 
+The Wind Waker HD's sound layer mutes some tracks of 14 pieces as it starts them. The game's
+state picks the tracks, such as the boat's sail or an enemy near Link. Some of the game's IDs
+start a piece in another arrangement. cafesf2 converts each piece as the game starts it, in the
+state that the sound layer starts in: the boat's sail down, Link off the boat, his sword
+sheathed and no enemy near. It also converts each other arrangement. Each is named after the
+piece and the game's ID or the state, for example `JA_BGM_KAMI_TOWER_80000125` or
+`JA_BGM_SEA_SAILING`. The battle music and three other pieces fade in over two seconds. The game
+fades them in too. While some pieces play, the game's code writes a status to their port 9,
+such as the phase of a boss fight. Such a piece converts once more for each value that the game
+writes and that changes what it plays, for example `JA_BGM_P_GANON_1_PORT9_2`. The battle music
+also converts with 1 on port 11, as when Link hits an enemy. A track that the game brings in
+while a fight goes on comes in over 5 or 10 frames in the game. In the files it plays from the
+start.
+
 JAudio times its music for the GameCube's rate of about 32,028 Hz. The Wii U plays it at
 32,000 Hz. There the music plays 0.089% slower and 1.5 cents lower than in the files.
+
+Twilight Princess HD gives its categories of sound effects their volumes at start-up. Category
+1, Link's voice, keeps the volume of the sound table. The others play at 120/127 of it. cafesf2
+does the same. During a conversation and in the pause menu, the game plays most categories
+quieter for a while. cafesf2 leaves that out.
+
+As Twilight Princess HD starts five pieces of music, it mutes some of their tracks. Hyrule
+Field's day music holds two arrangements. One plays while Link walks, and the other while he
+rides. cafesf2 converts the piece twice and leaves out the muted tracks' notes.
+`Z2BGM_FIELD_LINK_DAY` holds the walking arrangement and `Z2BGM_FIELD_LINK_DAY_riding` the
+riding one. `Z2BGM_TOAL_VILLEGE`, `Z2BGM_HORSE_BATTLE`, `Z2BGM_BOSS_SNOWWOMAN_1` and
+`Z2BGM_VS_GANON_02` leave out the tracks that the game mutes as they start. Later, the game's
+scenes, fights and other code change the tracks of 17 pieces. Some states play a track at part
+of its volume, such as Ordon Village's tracks at 0.65. The piece's file plays the state that the
+game starts the piece in, such as the state of a dungeon's first room. cafesf2 converts each
+later state as one more file of the piece. Its name adds the status that the game gives the
+piece, such as `Z2BGM_TOAL_VILLEGE_status1`. The battle music's states follow the fight:
+`_near`, `_searched`, `_near_searched` and `_port9_1`. Hyrule Field's day music also follows the
+field's code: what Link does, the enemies near him and the time of day. cafesf2 converts each
+way through the piece as one more file in each arrangement. `_status12` plays the sections of a
+long walk or ride. `_status4` to `_status7` play a fight's sections by their four entries.
+`_status10` and `_status11` play the two endings of a day. `_status8` and `_status9` play the
+starts that the field's code makes once no music plays. `_riding_status3` plays the section of
+Link standing on his horse. The game moves the tracks to a new state gradually. cafesf2 plays
+each state from the start and leaves out the states in between. The states come from runs of the
+game's code on the GameCube, the Wii and the Wii U. HD's code gives `Z2BGM_DUNGEON_LV9_02` other
+rooms and a start that leaves out some tracks. cafesf2 converts that piece with HD's states.
+
+Twilight Princess HD sets up an echo at start-up, as the GameCube's and the Wii's releases do.
+HD's echo repeats every 152 ms, a little sooner than the Wii's 160 ms. A file that sends to the
+echo ends when the echo would fall silent. The echo itself isn't in the file.
 
 Programs 0xf0 and up play the DSP's built-in oscillators. The square wave, the sawtooth, the
 pulse of 25% duty, the triangle and the sine become looping samples of one cycle, one for each
@@ -96,11 +159,13 @@ the oscillators' envelope: full volume until the release, then a fall to silence
 
 MIDI and SoundFont can't hold everything that JAudio does. The fitted envelopes can't follow an
 oscillator's table that rises again or loops. Random instrument effects play at their base
-values. Tremolos, track filters, pitch envelopes and notes on the DSP's noise, ramp and other
-oscillators that no sample can hold are left out. A vibrato deeper than a semitone is kept to a
-semitone. In the first JAudio's sequences, a track that shares its parent's voices gets separate
-voices. The oscillators that a track sets and the tempos of child tracks are left out there.
-cafesf2 reports each of these for each sequence.
+values. Tremolos, pitch envelopes and notes on the DSP's noise, ramp and other oscillators that
+no sample can hold are left out. So are the track filters of sound effects and the filters that
+change from note to note. A music track's other filters play through two zones of each region:
+one unfiltered and one low-passed. A vibrato deeper than a semitone is kept to a semitone. In
+the first JAudio's sequences, a track that shares its parent's voices gets separate voices. The
+oscillators that a track sets and the tempos of child tracks are left out there. cafesf2 reports
+each of these for each sequence.
 
 ### The first JAudio's sound effects
 
@@ -117,8 +182,9 @@ and the end. The effect ends when its slot is free again.
 An effect's volume is its volume in the sound table times the volume of its category. The Wind
 Waker HD gives each of the table's eight categories of sound effects a volume. Category 1 keeps
 the volume of the sound table. Categories 3, 6 and 7 play at 0.82 of it. The others play at 0.88
-of it. cafesf2 recognizes the start-up archive of the USA release and does the same. An effect
-also plays at the pitch that the table gives it. The MIDI file holds that pitch as a pitch bend.
+of it. cafesf2 recognizes the start-up archives of the USA and Japanese releases and does the
+same. An effect also plays at the pitch that the table gives it. The MIDI file holds that pitch
+as a pitch bend.
 A track can send its notes through the DSP's automatic mixer. That mixer sets their gains from
 their volume and pan. cafesf2 plays those notes at half the level of the others. That level
 approximates the game's mix.
@@ -346,7 +412,7 @@ Regions match the SoundFont, with these differences:
   leave free. A track that uses both its low-pass and its biquad leaves none while the biquad is
   on. Its regions then play without this low-pass.
 
-Five sfizz 1.2.3 quirks affect playback:
+Six sfizz 1.2.3 quirks affect playback:
 
 - **Decays and releases.** sfizz ends them sooner than the documentation's curve. Over the
   specified time, sfizz falls by a factor of e^-9: 78.17 dB. Where the game has fallen 40 dB,
@@ -364,6 +430,8 @@ Five sfizz 1.2.3 quirks affect playback:
 - **Repeated keys.** A key group in sfizz never cuts a note of the same key as the new note. The
   documentation's `off_by` cuts it. A key of a group struck again therefore leaves the earlier
   note playing in sfizz. The game fades that note out at release rate 126.
+- **Short decays and releases.** sfizz makes each decay and release last at least 6 ms. The
+  documentation sets no such floor. A shorter time plays over 6 ms.
 
 The opcodes follow their documentation at sfzformat.com, with these exceptions:
 
@@ -463,6 +531,14 @@ in MIDI, SoundFont or SFZ:
   bend, sweep or LFO across a threshold therefore plays through its key's low-pass. A SoundFont
   preset whose filter changes during notes (CC102) gets no such low-pass. Its notes above a rate
   of 1 are reported. The SFZ files keep the low-pass.
+- **Rate limit.** AX plays a voice at a rate of 8 at most: 8 samples of its wave for each sample
+  of the 32 kHz mix. A note whose pitch asks for a higher rate plays at 8 in the game. A note
+  whose key starts past the limit and whose pitch holds still gets zones and regions that play
+  at 8 too. Every key past the limit then plays at one pitch, with a scale tuning of 0 in the
+  SoundFont and `pitch_keytrack=0` in the SFZ files. Those keys take no resampling low-pass. A
+  note that a bend, a sweep or an LFO moves plays every key at its pitch. In the game, such a
+  note stays at the limit for as long as its pitch would pass it. In the files, it plays above
+  the limit then.
 - **Voice limits.** nw::snd has 96 voices unless a game sets fewer. Synths usually have more. By
   default, cafesf2 keeps the notes that the game drops for lack of a voice. With `--voices N`,
   cafesf2 drops them as its model of the game does. If a track then starts over 96 notes in one

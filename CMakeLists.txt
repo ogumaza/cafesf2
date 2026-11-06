@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.20)
 # cafesf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(cafesf2 VERSION 1.2.1 LANGUAGES CXX)
+project(cafesf2 VERSION 1.3.0 LANGUAGES CXX)
 
 # The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that cafesf2 shares
 # with the other converters and the players: the archive reader, the performer, the conversion and the command-line
@@ -25,7 +25,7 @@ xsflib_add_libraries(seqlib xsflib ntdlib)
 add_library(cafesf2_core INTERFACE)
 target_link_libraries(cafesf2_core INTERFACE seqlib::seqlib ntdlib::sar ntdlib::sequence_export)
 
-add_executable(cafesf2 src/main.cpp)
+add_executable(cafesf2 src/main.cpp src/profiles.cpp)
 target_link_libraries(cafesf2 PRIVATE cafesf2_core ntdlib::sequence_export_jaudio)
 xsflib_add_version(cafesf2 VERSION ${PROJECT_VERSION} DEFINE CAFESF2_VERSION
                    DESCRIPTION "Nintendo Wii U sound archive converter" PRODUCT cafesf2
@@ -54,6 +54,13 @@ if(BUILD_TESTING)
   set_tests_properties(cafesf2_jaudio_archive PROPERTIES FIXTURES_REQUIRED cafesf2_jaudio
                        PASS_REGULAR_EXPRESSION "test\\.baa: 1 sequences -> .*test_cafesf2"
                        FAIL_REGULAR_EXPRESSION "can't read| [1-9][0-9]* failed")
+
+  # The games' profiles (src/profiles.h): the start of a profiled sequence, its arrangements, and the archives'
+  # SHA-1s.
+  add_executable(cafesf2_profiles_test tests/profiles_test.cpp src/profiles.cpp)
+  target_include_directories(cafesf2_profiles_test PRIVATE src)
+  target_link_libraries(cafesf2_profiles_test PRIVATE cafesf2_core ntdlib::testing)
+  add_test(NAME cafesf2_profiles COMMAND cafesf2_profiles_test)
 
   # Load local_tests.cmake from each immediate subdirectory to register tests that use locally supplied files.
   xsflib_include_local_tests()
