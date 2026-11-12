@@ -12,28 +12,92 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
-#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "ntdlib/cafe/snd/sequence_starts.h"
 #include "ntdlib/sar/formats.h"
 #include "ntdlib/sequence_export/archive_converter.h"
+#include "ntdlib/sequence_export/arrangements.h"
 #include "ntdlib/sequence_export/consoles.h"
 #include "ntdlib/sequence_export/convert.h"
 #include "ntdlib/sequence_export/frame.h"
 #include "ntdlib/sequence_export/jaudio/game_input.h"
 #include "ntdlib/sequence_export/performance.h"
+#include "xsflib/sha1.h"
 
 #include "profiles.h"
 
 namespace frame = ntdlib::sequence_export;
 namespace jaudio = ntdlib::sequence_export::jaudio;
 
+using ntdlib::cafe::snd::SequenceArrangement;
 using ntdlib::sar::SoundArchive;
 
-int main(int argc, char** argv)
+namespace
 {
-    frame::ArchiveConverter<SoundArchive> converter;
+
+// Reads the sound archive at `input`, named `name`, with `settings`, and the group files that the game keeps beside it.
+// Sets `archive_sha1` to the SHA-1 of the archive file. The SHA-1 picks the starts of the sequences (profiles.h).
+// Returns nothing if the file can't be read. The frame then reports the failure.
+std::optional<SoundArchive> ReadArchive(const std::filesystem::path& input, const std::string& name,
+                                        const frame::Settings& settings, std::string& archive_sha1)
+{
+    archive_sha1.clear();
+    std::optional<std::vector<uint8_t>> bytes = frame::ReadFile(input);
+    if (!bytes)
+    {
+        return std::nullopt;
+    }
+
+    archive_sha1 = xsflib::Sha1::Hex(xsflib::Sha1::Of(*bytes));
+    SoundArchive archive = frame::LoadArchive<SoundArchive>(std::move(*bytes), name, settings);
+    frame::AddGroupFiles(archive, input, name);
+
+    return archive;
+}
+
+// The arrangements of each sound of `archive` for the frame. An arrangement sets the variables and the tracks that the
+// game sets.
+frame::ArrangementsOf ArrangementsOf(std::string_view archive_sha1, const SoundArchive& archive)
+{
+    return [sha1 = std::string(archive_sha1), &archive](std::size_t sound)
+    {
+        std::vector<frame::Arrangement> arrangements;
+        for (const SequenceArrangement& arrangement :
+             ntdlib::cafe::snd::SequenceArrangements(sha1, archive.Sounds()[sound].name))
+        {
+            arrangements.push_back({std::string(arrangement.suffix), [arrangement](frame::PerformOptions& options)
+                                    { cafesf2::SetUpArrangement(arrangement, options); }});
+        }
+
+        return arrangements;
+    };
+}
+
+// Converts entry `index` of the frame's list of `archive` with `perform`, `settings` and `program`, as the game starts
+// it. A sequence uses the start in ntdlib's list. An arrangement uses the variables and the tracks that the arrangement
+// sets.
+frame::Conversion ConvertEntry(std::string_view archive_sha1, const SoundArchive& archive, std::size_t index,
+                               const frame::PerformOptions& perform, const frame::Settings& settings,
+                               const std::string& program)
+{
+    const frame::ArrangedSound at = frame::ArrangedSoundAt(index, archive.Sounds().size());
+    frame::PerformOptions options = perform;
+    if (!at.arrangement)
+    {
+        cafesf2::SetUpStart(ntdlib::cafe::snd::StartOfSequence(archive_sha1, archive.Sounds()[at.sound].name), options);
+    }
+
+    frame::SetUpArrangement(at, ArrangementsOf(archive_sha1, archive), options);
+    return frame::ConvertSequence(archive, static_cast<uint32_t>(at.sound), options, settings, program);
+}
+
+// Fills in `converter`: the help and the Wii U settings.
+void SetUpConverter(frame::ArchiveConverter<SoundArchive>& converter)
+{
     converter.program = "cafesf2";
     converter.version_line = "cafesf2 " CAFESF2_VERSION;
     converter.description =
@@ -43,60 +107,42 @@ int main(int argc, char** argv)
         "in the title's content folder.\n";
     converter.extension = ".bfsar";
     converter.settings = frame::CafeSettings();
-    converter.group_files = true;
+}
 
-    // An archive's profile starts the sequences that wait for the game's variables with the values that the game's
-    // code gives them, and a layered piece with the tracks that the game's code leaves playing (profiles.h). The
-    // profile comes from the archive's bytes, before the frame reads the archive.
-    cafesf2::Profile profile = cafesf2::Profile::kNone;
+// The frame converter of `converter`, with the cafesf2 hooks. The hooks keep the SHA-1 of the open archive in
+// `archive_sha1`. `converter` and `archive_sha1` have to outlive the result.
+frame::Converter<frame::PerformOptions, SoundArchive, frame::Conversion> MakeConverter(
+    const frame::ArchiveConverter<SoundArchive>& converter, std::string& archive_sha1)
+{
     frame::Converter<frame::PerformOptions, SoundArchive, frame::Conversion> archives =
         frame::MakeArchiveConverter(converter);
-    const auto open = archives.open;
-    archives.open = [open, &profile](const std::filesystem::path& input, const std::string& name)
+    archives.open = [&converter, &archive_sha1](const std::filesystem::path& input, const std::string& name)
     {
-        const std::optional<std::vector<uint8_t>> bytes = frame::ReadFile(input);
-        profile = bytes ? cafesf2::ProfileOf(*bytes) : cafesf2::Profile::kNone;
-        return open(input, name);
+        return ReadArchive(input, name, converter.settings, archive_sha1);
     };
-
-    // A sequence's arrangements follow the sequence (cafesf2::ArrangementsOf). Arrangement k of sound s gets the index
-    // (k + 1) * n + s. n is the archive's sound count.
-    const auto sequences = archives.sequences;
-    archives.sequences = [sequences, &profile](const SoundArchive& archive)
+    archives.sequences = [&archive_sha1](const SoundArchive& archive)
     {
-        const std::size_t sounds = archive.Sounds().size();
-        std::vector<frame::Sequence> listed;
-        for (const frame::Sequence& sequence : sequences(archive))
-        {
-            listed.push_back(sequence);
-            const std::span<const cafesf2::Arrangement> arrangements = cafesf2::ArrangementsOf(profile, sequence.name);
-            for (std::size_t k = 0; k < arrangements.size(); k++)
-            {
-                listed.push_back({.index = (k + 1) * sounds + sequence.index,
-                                  .name = sequence.name + std::string(arrangements[k].suffix)});
-            }
-        }
-
-        return listed;
+        return frame::WithArrangements(frame::ArchiveSequences(archive), archive.Sounds().size(),
+                                       ArrangementsOf(archive_sha1, archive));
     };
-    const auto convert = archives.convert;
     archives.convert =
-        [convert, &profile](SoundArchive& archive, std::size_t index, const frame::PerformOptions& perform)
+        [&converter, &archive_sha1](SoundArchive& archive, std::size_t index, const frame::PerformOptions& perform)
     {
-        const std::size_t sounds = archive.Sounds().size();
-        const std::string& name = archive.Sounds()[index % sounds].name;
-        frame::PerformOptions options = perform;
-        if (index < sounds)
-        {
-            cafesf2::SetUpSound(profile, name, options);
-        }
-        else
-        {
-            cafesf2::SetUpArrangement(cafesf2::ArrangementsOf(profile, name)[index / sounds - 1], options);
-        }
-
-        return convert(archive, index % sounds, options);
+        return ConvertEntry(archive_sha1, archive, index, perform, converter.settings, converter.program);
     };
+
+    return archives;
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    frame::ArchiveConverter<SoundArchive> converter;
+    SetUpConverter(converter);
+    std::string archive_sha1;
+    const frame::Converter<frame::PerformOptions, SoundArchive, frame::Conversion> archives =
+        MakeConverter(converter, archive_sha1);
 
     // The first JAudio plays a game's sound effects in one sequence. jaudio1_effects converts each effect as that
     // sequence plays it, after the game's other sequences. The games run on the Wii U (wii_u). Twilight Princess HD

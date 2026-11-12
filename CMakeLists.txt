@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.20)
 # cafesf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(cafesf2 VERSION 1.3.0 LANGUAGES CXX)
+project(cafesf2 VERSION 1.3.1 LANGUAGES CXX)
 
 # The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that cafesf2 shares
 # with the other converters and the players: the archive reader, the performer, the conversion and the command-line
@@ -20,16 +20,28 @@ xsflib_project(WARNINGS_ON_EVERY_TARGET)
 set(NTDLIB_SEQUENCE_EXPORT ON)
 xsflib_add_libraries(seqlib xsflib ntdlib)
 
-# The libraries that cafesf2 and its tests link. ntdlib's sequence_export/consoles.h holds the Wii U's settings. The
-# program also links ntdlib's conversion of JAudio games (sequence_export_jaudio).
+# clang-cl's -Wmissing-designated-field-initializers asks for every field of a designated initializer. Filled-in fields
+# would copy the struct's defaults into each initializer, where they could drift from the struct. The warning is off
+# for cafesf2's targets. The libraries above keep it.
+if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  add_compile_options(-Wno-missing-designated-field-initializers)
+endif()
+
+# The libraries that cafesf2 and its tests link. ntdlib's sequence_export/consoles.h holds the Wii U's settings.
+# ntdlib::cafe_sequence_starts contains the starts of the game sequences. The program also links ntdlib's conversion of
+# JAudio games (sequence_export_jaudio).
 add_library(cafesf2_core INTERFACE)
-target_link_libraries(cafesf2_core INTERFACE seqlib::seqlib ntdlib::sar ntdlib::sequence_export)
+target_link_libraries(cafesf2_core INTERFACE seqlib::seqlib ntdlib::sar ntdlib::sequence_export
+                      ntdlib::cafe_sequence_starts)
 
 add_executable(cafesf2 src/main.cpp src/profiles.cpp)
 target_link_libraries(cafesf2 PRIVATE cafesf2_core ntdlib::sequence_export_jaudio)
 xsflib_add_version(cafesf2 VERSION ${PROJECT_VERSION} DEFINE CAFESF2_VERSION
                    DESCRIPTION "Nintendo Wii U sound archive converter" PRODUCT cafesf2
                    COPYRIGHT "Copyright (c) 2026 the cafesf2 authors. MIT licence.")
+
+# Windows: UTF-8 as the code page. An archive or a folder whose name the system's code page can't hold then opens.
+xsflib_add_utf8_manifest(cafesf2)
 
 # Finder cannot drop files onto a command-line executable. Package it in a macOS droplet app, with the version in its
 # Info.plist.
@@ -55,8 +67,8 @@ if(BUILD_TESTING)
                        PASS_REGULAR_EXPRESSION "test\\.baa: 1 sequences -> .*test_cafesf2"
                        FAIL_REGULAR_EXPRESSION "can't read| [1-9][0-9]* failed")
 
-  # The games' profiles (src/profiles.h): the start of a profiled sequence, its arrangements, and the archives'
-  # SHA-1s.
+  # The starts of the sequences (src/profiles.h): how a start and an arrangement set the variables and the tracks of
+  # the performance.
   add_executable(cafesf2_profiles_test tests/profiles_test.cpp src/profiles.cpp)
   target_include_directories(cafesf2_profiles_test PRIVATE src)
   target_link_libraries(cafesf2_profiles_test PRIVATE cafesf2_core ntdlib::testing)
