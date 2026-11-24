@@ -3,31 +3,24 @@
 cmake_minimum_required(VERSION 3.20)
 # cafesf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(cafesf2 VERSION 1.3.1 LANGUAGES CXX)
+project(cafesf2 VERSION 1.3.2 LANGUAGES CXX)
 
-# The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that cafesf2 shares
+# The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib contains the Nintendo code that cafesf2 shares
 # with the other converters and the players: the archive reader, the performer, the conversion and the command-line
-# frame (ntdlib::sequence_export). xsflib holds the common code that ntdlib builds on, and the CMake helpers. xsflib's
-# XsflibProject.cmake sets the C++ standard, a release build by default, the static C runtime and the compiler options
-# that keep the output the same on every platform. ntdlib builds on seqlib and xsflib. xsflib_add_libraries adds ntdlib
-# last. XsflibProject.cmake defines that macro. The macro stops if a submodule is missing. The check below
-# covers xsflib itself.
+# frame (ntdlib::sequence_export). xsflib contains the common code that ntdlib builds on, and the CMake helpers.
+# xsflib's XsflibProject.cmake sets the C++ standard, a release build by default, the static C runtime and the compiler
+# options that keep the output the same on every platform. ntdlib builds on seqlib and xsflib. xsflib_project adds the
+# libraries in that order, after it turns on NTDLIB_SEQUENCE_EXPORT, ntdlib's conversion of sequences. It stops if a
+# submodule is missing. The check below covers xsflib itself. xsflib_project also turns off clang-cl's
+# -Wmissing-designated-field-initializers for every target, the libraries too. A designated initializer names only the
+# fields that differ from their defaults.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/xsflib/CMakeLists.txt")
   message(FATAL_ERROR "externals/xsflib is missing. Run: git submodule update --init")
 endif()
 include(externals/xsflib/cmake/XsflibProject.cmake)
-xsflib_project(WARNINGS_ON_EVERY_TARGET)
-set(NTDLIB_SEQUENCE_EXPORT ON)
-xsflib_add_libraries(seqlib xsflib ntdlib)
+xsflib_project(WARNINGS_ON_EVERY_TARGET ENABLE NTDLIB_SEQUENCE_EXPORT LIBRARIES seqlib xsflib ntdlib)
 
-# clang-cl's -Wmissing-designated-field-initializers asks for every field of a designated initializer. Filled-in fields
-# would copy the struct's defaults into each initializer, where they could drift from the struct. The warning is off
-# for cafesf2's targets. The libraries above keep it.
-if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  add_compile_options(-Wno-missing-designated-field-initializers)
-endif()
-
-# The libraries that cafesf2 and its tests link. ntdlib's sequence_export/consoles.h holds the Wii U's settings.
+# The libraries that cafesf2 and its tests link. ntdlib's sequence_export/consoles.h contains the Wii U's settings.
 # ntdlib::cafe_sequence_starts contains the starts of the game sequences. The program also links ntdlib's conversion of
 # JAudio games (sequence_export_jaudio).
 add_library(cafesf2_core INTERFACE)
@@ -52,20 +45,12 @@ xsflib_add_droplet_tool(cafesf2 APP_NAME Cafesf2 VERSION ${PROJECT_VERSION}
 include(CTest)
 if(BUILD_TESTING)
   # The program reports its version, and it rejects --var 32=1. -DCAFESF2_TEST_ARCHIVE=path/to/archive.bfsar also
-  # converts and checks every sequence of an archive with tests/cafesf2_test.cpp.
+  # converts and checks every sequence of an archive with tests/cafesf2_test.cpp. GENERATED_FILES and GENERATED_ARCHIVE
+  # add the conversion of a Wii U game that plays its music with JAudio, from the game's start-up archive with its other
+  # sound files beside it. `cafesf2_test --jaudio` writes them. xsflib's XsflibApps.cmake sets the tests' pass and fail
+  # expressions.
   xsflib_add_converter_tests(cafesf2 EXTENSION .bfsar VERSION ${PROJECT_VERSION}
-                             LIBRARIES cafesf2_core ntdlib::testing)
-
-  # It converts a Wii U game that plays its music with JAudio, from the game's start-up archive with its other sound
-  # files beside it. cafesf2_test writes them. ctest ignores the exit code of a test with a pass expression. The
-  # conversion therefore also fails if cafesf2 reports a failure.
-  set(cafesf2_jaudio ${CMAKE_CURRENT_BINARY_DIR}/jaudio)
-  add_test(NAME cafesf2_jaudio_files COMMAND cafesf2_test --jaudio ${cafesf2_jaudio})
-  add_test(NAME cafesf2_jaudio_archive COMMAND cafesf2 ${cafesf2_jaudio}/test.baa)
-  set_tests_properties(cafesf2_jaudio_files PROPERTIES FIXTURES_SETUP cafesf2_jaudio)
-  set_tests_properties(cafesf2_jaudio_archive PROPERTIES FIXTURES_REQUIRED cafesf2_jaudio
-                       PASS_REGULAR_EXPRESSION "test\\.baa: 1 sequences -> .*test_cafesf2"
-                       FAIL_REGULAR_EXPRESSION "can't read| [1-9][0-9]* failed")
+                             LIBRARIES cafesf2_core ntdlib::testing GENERATED_FILES jaudio GENERATED_ARCHIVE test.baa)
 
   # The starts of the sequences (src/profiles.h): how a start and an arrangement set the variables and the tracks of
   # the performance.

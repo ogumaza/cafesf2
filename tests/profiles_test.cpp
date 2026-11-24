@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 // Tests the starts of the sequences (src/profiles.h): how the start of a listed sequence and its arrangements set the
-// variables and the tracks of the performance. The cafe_sequence_starts test in ntdlib checks the values in the lists.
+// variables, the tracks, the tempo ratio and the pitch of the performance. The cafe_sequence_starts test in ntdlib
+// checks the values in the lists.
 
 #include "profiles.h"
 
@@ -28,24 +29,25 @@ constexpr std::string_view kAmiiboFestivalArc1 = "724d9942fa0ea684839a3de269878e
 constexpr std::string_view kMarioParty10 = "00bdc6c4610830576a44b7198d25894fe87f06b9";
 constexpr std::string_view kNewSuperMarioBrosU = "e0da277f9eed3c9fbd6dcbce09230811932d14dc";
 constexpr std::string_view kRainbowCurse = "813a15124d13b1978e7e3cb49f6648b9cb50d705";
+constexpr std::string_view kGameAndWario = "4d2c7f19370a0eea57de309b950c6af937e6e01f";
 
 void CheckStarts()
 {
     PerformOptions humming;
+    PerformOptions habitat;
+    PerformOptions unlisted;
+
     cafesf2::SetUpStart(StartOfSequence(kAmiiboFestivalArc1, "SQ_SE_ACT_HUMMING"), humming);
+    cafesf2::SetUpStart(StartOfSequence(kAmiiboFestival, "SQ_SE_HAB_ENV"), habitat);
+    cafesf2::SetUpStart(StartOfSequence(kAmiiboFestival, "SQ_BGM_LOUNGE"), unlisted);
+    cafesf2::SetUpStart(StartOfSequence("", "SQ_SE_HAB_ENV"), unlisted);
+
     Check(humming.variables.empty() && humming.track_variables.size() == 1 && humming.track_variables[0].track == 0 &&
               humming.track_variables[0].index == 15 && humming.track_variables[0].value == 1,
           "amiibo Festival's humming starts with track 0's variable 15 at 1");
-
-    PerformOptions habitat;
-    cafesf2::SetUpStart(StartOfSequence(kAmiiboFestival, "SQ_SE_HAB_ENV"), habitat);
     Check(habitat.variables.size() == 1 && habitat.variables.at(18) == 0 && habitat.track_variables.empty() &&
               habitat.tracks == 0xffff,
           "the habitat card's ambience starts with global 2 at 0");
-
-    PerformOptions unlisted;
-    cafesf2::SetUpStart(StartOfSequence(kAmiiboFestival, "SQ_BGM_LOUNGE"), unlisted);
-    cafesf2::SetUpStart(StartOfSequence("", "SQ_SE_HAB_ENV"), unlisted);
     Check(unlisted.variables.empty() && unlisted.track_variables.empty() && unlisted.tracks == 0xffff,
           "an unlisted sequence and an unknown archive set nothing");
 }
@@ -54,13 +56,14 @@ void CheckArrangements()
 {
     const std::span<const SequenceArrangement> touch = SequenceArrangements(kMarioParty10, "SQ_SE_MG0K04_KOP_TCH_DRC");
     PerformOptions both;
-    cafesf2::SetUpArrangement(touch[3], both);
-    Check(both.variables.size() == 2 && both.variables.at(24) == 0 && both.variables.at(25) == 0,
-          "an arrangement sets each of its variables");
-
     PerformOptions over;
     over.variables[0] = 7;
+
+    cafesf2::SetUpArrangement(touch[3], both);
     cafesf2::SetUpArrangement(SequenceArrangements(kNewSuperMarioBrosU, "SE_OBJ_RC_LIFTLINE_MOVE")[2], over);
+
+    Check(both.variables.size() == 2 && both.variables.at(24) == 0 && both.variables.at(25) == 0,
+          "an arrangement sets each of its variables");
     Check(over.variables.size() == 1 && over.variables.at(0) == 200, "an arrangement's value replaces --var's");
 }
 
@@ -68,17 +71,46 @@ void CheckArrangements()
 // that the options already leave out stays out.
 void CheckTrackStates()
 {
-    PerformOptions start;
-    cafesf2::SetUpStart(StartOfSequence(kRainbowCurse, "BGM_SEQ_MENU_INTERACTIVE"), start);
-    Check(start.tracks == 0x0080 && start.variables.empty(), "the stage select starts with track 7 alone");
-
     const std::span<const SequenceArrangement> states = SequenceArrangements(kRainbowCurse, "BGM_SEQ_MENU_INTERACTIVE");
+    PerformOptions start;
     PerformOptions boss;
     boss.tracks = 0xfffe;
+
+    cafesf2::SetUpStart(StartOfSequence(kRainbowCurse, "BGM_SEQ_MENU_INTERACTIVE"), start);
     cafesf2::SetUpArrangement(states[9], boss);
-    Check(boss.tracks == 0x1104, "world 3's boss stage plays tracks 2, 8 and 12");
+    const uint16_t boss_tracks = boss.tracks;
     cafesf2::SetUpArrangement(states[7], boss);
+
+    Check(start.tracks == 0x0080 && start.variables.empty(), "the stage select starts with track 7 alone");
+    Check(boss_tracks == 0x1104, "world 3's boss stage plays tracks 2, 8 and 12");
     Check(boss.tracks == 0x0100, "a track that the options leave out stays out");
+}
+
+// Game & Wario's Gamer pieces also play at 140 and 200 BPM. The game sets the tempo ratio and the pitch of the sound.
+// The arrangement passes both to the performance and keeps the variables and the tracks of the options.
+void CheckTempoAndPitch()
+{
+    const std::span<const SequenceArrangement> bpms = SequenceArrangements(kGameAndWario, "BGM_NI_GAME_FISH1");
+    PerformOptions fast;
+    fast.variables[3] = 5;
+    fast.tracks = 0x00ff;
+    PerformOptions start;
+
+    Check(bpms.size() == 2, "Gamer's pieces have two arrangements");
+    if (bpms.size() != 2)
+    {
+        return;
+    }
+
+    cafesf2::SetUpArrangement(bpms[1], fast);
+    cafesf2::SetUpStart(StartOfSequence(kGameAndWario, "BGM_NI_GAME_FISH1"), start);
+
+    Check(bpms[1].suffix == " 200 BPM", "the second arrangement is 200 BPM");
+    Check(fast.tempo_ratio == bpms[1].tempo_ratio && fast.pitch == bpms[1].pitch,
+          "an arrangement sets the tempo ratio and the pitch that the game sets");
+    Check(fast.variables.size() == 1 && fast.variables.at(3) == 5 && fast.tracks == 0x00ff,
+          "an arrangement without variables or tracks leaves the options' values");
+    Check(start.tempo_ratio == 1.0f && start.pitch == 1.0f, "the piece itself starts at 120 BPM");
 }
 
 } // namespace
@@ -88,6 +120,7 @@ int main()
     CheckStarts();
     CheckArrangements();
     CheckTrackStates();
+    CheckTempoAndPitch();
 
     return xsflib::testing::Summary("cafesf2 profiles");
 }

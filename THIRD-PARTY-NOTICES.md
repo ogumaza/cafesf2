@@ -5,8 +5,8 @@ cafesf2 is under the MIT licence (`LICENSE`). The libraries it builds on are und
 | Component | Licence | Use in cafesf2 |
 |---|---|---|
 | seqlib, Copyright (c) 2026 the seqlib authors | MIT (`externals/seqlib/LICENSE`) | In `externals/seqlib`, a submodule, compiled into cafesf2: the MIDI, SoundFont 2 and SFZ files and their samples. |
-| xsflib, Copyright (c) 2026 the xsflib authors | MIT (`externals/xsflib/LICENSE`) | In `externals/xsflib`, a submodule, compiled into cafesf2: bounds-checked reads in either byte order, file input and output with UTF-8 paths, the printable form of names, the console's UTF-8 arguments and output, the Windows version resource and the macOS app's droplet script. |
-| ntdlib, Copyright (c) 2026 the ntdlib authors | MIT (`externals/ntdlib/LICENSE`) | In `externals/ntdlib`, a submodule, compiled into cafesf2: the sound archive and wave readers, the readers of JAudio's sound data in both generations, the sequence players of nw::snd and JAudio, the conversion of instruments and filters, and the command line's options, help and messages. |
+| xsflib, Copyright (c) 2026 the xsflib authors | MIT (`externals/xsflib/LICENSE`) | In `externals/xsflib`, a submodule, compiled into cafesf2: bounds-checked reads in either byte order, SHA-1, file input and output with UTF-8 paths, the printable form of names, UTF-8 arguments and output on the console, the Windows version resource and the droplet script of the macOS app. |
+| ntdlib, Copyright (c) 2026 the ntdlib authors | MIT (`externals/ntdlib/LICENSE`) | In `externals/ntdlib`, a submodule, compiled into cafesf2: the sound archive and wave readers, the readers of the JAudio sound data in both generations, the sequence players of nw::snd and JAudio, the starts of the sequences of known games, the conversion of instruments and filters, and the options, help and messages of the command line. |
 
 Binary distributions must include the MIT notices of cafesf2, seqlib, xsflib and ntdlib. Shipping `LICENSE` and this file
 does that. The licence texts follow.
@@ -15,10 +15,10 @@ does that. The licence texts follow.
 
 Nothing in cafesf2 licenses game data. The sound archives that cafesf2 reads belong to their copyright holders.
 
-ntdlib's `include/ntdlib/nwsnd/tables.h` holds the numeric tables of NintendoWare's sound libraries: powers of two,
+`include/ntdlib/nwsnd/tables.h` in ntdlib contains the numeric tables of the NintendoWare sound libraries: powers of two,
 decibel levels, envelope attack multipliers, pan curves, low-pass cutoffs, biquad filter coefficients and sines. The
-models use the exact values to reproduce the consoles' output. ntdlib's `src/sequence_export/filter_tables_*.cpp` hold
-each console's filters fitted to SoundFont 2 and SFZ settings.
+models use the exact values to reproduce the output of the consoles. The files `src/sequence_export/filter_tables_*.cpp` in
+ntdlib contain the filters of each console, fitted to SoundFont 2 and SFZ settings.
 
 ## Licence texts
 

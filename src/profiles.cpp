@@ -42,6 +42,8 @@ void SetUpStart(const ntdlib::cafe::snd::SequenceStart& start, PerformOptions& p
 void SetUpArrangement(const ntdlib::cafe::snd::SequenceArrangement& arrangement, PerformOptions& perform)
 {
     SetUpStart({.variables = arrangement.variables, .tracks = arrangement.tracks}, perform);
+    perform.tempo_ratio = arrangement.tempo_ratio;
+    perform.pitch = arrangement.pitch;
 }
 
 } // namespace cafesf2

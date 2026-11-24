@@ -14,11 +14,12 @@
 namespace cafesf2
 {
 
-// Sets the variables and the tracks of `start` in `perform`, over any values that it holds for the same variables. A
-// track that `perform` leaves out stays out.
+// Sets the variables and the tracks of `start` in `perform`, over any values that `perform` contains for the same
+// variables. A track that `perform` leaves out stays out.
 void SetUpStart(const ntdlib::cafe::snd::SequenceStart& start, ntdlib::sequence_export::PerformOptions& perform);
 
-// Sets the variables and the tracks of `arrangement` in `perform`, as SetUpStart does.
+// Sets the variables and the tracks of `arrangement` in `perform`, as SetUpStart does, and the tempo ratio and the
+// pitch that the game sets.
 void SetUpArrangement(const ntdlib::cafe::snd::SequenceArrangement& arrangement,
                       ntdlib::sequence_export::PerformOptions& perform);
 

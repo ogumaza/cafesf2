@@ -24,7 +24,7 @@
 #include "ntdlib/sequence_export/consoles.h"
 #include "ntdlib/sequence_export/convert.h"
 #include "ntdlib/sequence_export/frame.h"
-#include "ntdlib/sequence_export/jaudio/game_input.h"
+#include "ntdlib/sequence_export/jaudio/archive_games.h"
 #include "ntdlib/sequence_export/performance.h"
 #include "xsflib/sha1.h"
 
@@ -39,28 +39,20 @@ using ntdlib::sar::SoundArchive;
 namespace
 {
 
-// Reads the sound archive at `input`, named `name`, with `settings`, and the group files that the game keeps beside it.
-// Sets `archive_sha1` to the SHA-1 of the archive file. The SHA-1 picks the starts of the sequences (profiles.h).
-// Returns nothing if the file can't be read. The frame then reports the failure.
+// Reads the sound archive at `input`, named `name`, with `settings`, and the group files that the game keeps beside it
+// (frame::OpenArchive). Sets `archive_sha1` to the SHA-1 of the archive file. The SHA-1 picks the starts of the
+// sequences (profiles.h). Returns nothing if the file can't be read. The frame then reports the failure.
 std::optional<SoundArchive> ReadArchive(const std::filesystem::path& input, const std::string& name,
                                         const frame::Settings& settings, std::string& archive_sha1)
 {
-    archive_sha1.clear();
-    std::optional<std::vector<uint8_t>> bytes = frame::ReadFile(input);
-    if (!bytes)
-    {
-        return std::nullopt;
-    }
-
-    archive_sha1 = xsflib::Sha1::Hex(xsflib::Sha1::Of(*bytes));
-    SoundArchive archive = frame::LoadArchive<SoundArchive>(std::move(*bytes), name, settings);
-    frame::AddGroupFiles(archive, input, name);
+    std::optional<SoundArchive> archive = frame::OpenArchive<SoundArchive>(input, name, settings, true);
+    archive_sha1 = archive ? xsflib::Sha1::Hex(xsflib::Sha1::Of(archive->Bytes())) : std::string();
 
     return archive;
 }
 
-// The arrangements of each sound of `archive` for the frame. An arrangement sets the variables and the tracks that the
-// game sets.
+// The arrangements of each sound of `archive` for the frame. An arrangement sets the variables, the tracks, the tempo
+// ratio and the pitch that the game sets.
 frame::ArrangementsOf ArrangementsOf(std::string_view archive_sha1, const SoundArchive& archive)
 {
     return [sha1 = std::string(archive_sha1), &archive](std::size_t sound)
@@ -69,8 +61,11 @@ frame::ArrangementsOf ArrangementsOf(std::string_view archive_sha1, const SoundA
         for (const SequenceArrangement& arrangement :
              ntdlib::cafe::snd::SequenceArrangements(sha1, archive.Sounds()[sound].name))
         {
-            arrangements.push_back({std::string(arrangement.suffix), [arrangement](frame::PerformOptions& options)
-                                    { cafesf2::SetUpArrangement(arrangement, options); }});
+            auto set_up = [arrangement](frame::PerformOptions& options)
+            {
+                cafesf2::SetUpArrangement(arrangement, options);
+            };
+            arrangements.push_back({std::string(arrangement.suffix), std::move(set_up)});
         }
 
         return arrangements;
@@ -78,8 +73,8 @@ frame::ArrangementsOf ArrangementsOf(std::string_view archive_sha1, const SoundA
 }
 
 // Converts entry `index` of the frame's list of `archive` with `perform`, `settings` and `program`, as the game starts
-// it. A sequence uses the start in ntdlib's list. An arrangement uses the variables and the tracks that the arrangement
-// sets.
+// it. A sequence uses the start in ntdlib's list. An arrangement uses the variables, the tracks, the tempo ratio and
+// the pitch that the arrangement sets.
 frame::Conversion ConvertEntry(std::string_view archive_sha1, const SoundArchive& archive, std::size_t index,
                                const frame::PerformOptions& perform, const frame::Settings& settings,
                                const std::string& program)
@@ -92,6 +87,7 @@ frame::Conversion ConvertEntry(std::string_view archive_sha1, const SoundArchive
     }
 
     frame::SetUpArrangement(at, ArrangementsOf(archive_sha1, archive), options);
+
     return frame::ConvertSequence(archive, static_cast<uint32_t>(at.sound), options, settings, program);
 }
 
@@ -146,16 +142,8 @@ int main(int argc, char** argv)
 
     // The first JAudio plays a game's sound effects in one sequence. jaudio1_effects converts each effect as that
     // sequence plays it, after the game's other sequences. The games run on the Wii U (wii_u). Twilight Princess HD
-    // shares its start-up archive with the Wii's release. With wii_u, HD's rules hold the echo that HD's code sets up.
-    // As jaudio::RunArchiveConverterWithGames does, a JAudio game takes the program's options. Of those beyond the
-    // frame's, only --voices applies to its sequences.
-    const jaudio::GameConverter games = jaudio::MakeGameConverter(
-        archives.program, archives.version_line, jaudio::ArchiveProgramOptions(archives.option), archives.usage,
-        {.jaudio1_effects = true, .wii_u = true});
-    const auto run = [&archives, &games](const std::vector<std::string>& args)
-    {
-        return frame::Run(args, archives, jaudio::ArchiveProgramGames(args, games));
-    };
-
-    return frame::RunMain(argc, argv, run);
+    // shares its start-up archive with the Wii release. With wii_u, the conversion follows the rules of the HD port,
+    // such as the echo that its code sets up. A JAudio game takes the program's options. Of those beyond the frame's,
+    // only --voices applies to its sequences.
+    return jaudio::RunConverterWithGames(argc, argv, archives, {.jaudio1_effects = true, .wii_u = true});
 }
